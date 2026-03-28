@@ -111,13 +111,15 @@ export default function PomodoroRoom({
   const saveStats = useCallback(async (focusSeconds: number, breakSeconds: number) => {
     if (isGuest) return
     const today = new Date().toISOString().split('T')[0]
-    await supabase.rpc('upsert_daily_stats', {
+    const { error } = await supabase.rpc('upsert_daily_stats', {
       p_user_id: user.id, p_date: today,
       p_focus: focusSeconds, p_break: breakSeconds,
     })
-    // Update local totals immediately
-    if (focusSeconds > 0) setTotalFocusSecs(t => t + focusSeconds)
-    if (breakSeconds > 0) setTotalBreakSecs(t => t + breakSeconds)
+    if (error) console.error('saveStats failed:', error.message)
+    else {
+      if (focusSeconds > 0) setTotalFocusSecs(t => t + focusSeconds)
+      if (breakSeconds > 0) setTotalBreakSecs(t => t + breakSeconds)
+    }
   }, [user, isGuest])
 
   // Tick — drives both solo and shared
