@@ -11,6 +11,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Hillsum',
   description: 'Focus together.',
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

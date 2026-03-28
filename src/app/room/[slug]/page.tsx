@@ -15,9 +15,11 @@ export type { TimerConfig }
 
 export type RoomState = {
   phase: 'focus' | 'break' | 'idle'
-  endTime: number
+  endTime: number       // wall-clock ms when phase expires (adjusted on resume)
   focusMinutes: number
   breakMinutes: number
+  paused?: boolean
+  pausedSecondsLeft?: number  // remaining seconds at time of pause
 }
 
 export default function RoomPage() {
@@ -29,6 +31,10 @@ export default function RoomPage() {
   // 'setup' = choosing time, 'running' = timer active
   const [timerPhase, setTimerPhase] = useState<'setup' | 'running'>('setup')
   const [onlineUsers, setOnlineUsers] = useState<{ name: string; user_id: string }[]>([])
+  const [showProfilePanel, setShowProfilePanel] = useState(false)
+  const [showOnlinePanel, setShowOnlinePanel] = useState(false)
+  const [allTimeFocus, setAllTimeFocus] = useState(0)
+  const [allTimeBreak, setAllTimeBreak] = useState(0)
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -59,6 +65,15 @@ export default function RoomPage() {
     supabase.from('rooms').select('name').eq('name', slug).single()
       .then(({ data }) => setRoomExists(!!data))
   }, [slug])
+
+  // Load all-time stats for profile panel
+  useEffect(() => {
+    if (!user || user.id === 'guest') return
+    supabase.from('profiles').select('total_focus_seconds, total_break_seconds').eq('id', user.id).single()
+      .then(({ data }) => {
+        if (data) { setAllTimeFocus(data.total_focus_seconds ?? 0); setAllTimeBreak(data.total_break_seconds ?? 0) }
+      })
+  }, [user])
 
   // Broadcast channel — set up as soon as we know the room exists
   useEffect(() => {
@@ -115,12 +130,14 @@ export default function RoomPage() {
             .then(({ data }) => {
               if (data && data.end_time && data.phase !== 'idle') {
                 setRoomState(prev => {
-                  if (prev) return prev // already got state from broadcast
+                  if (prev) return prev
                   const state: RoomState = {
                     phase: data.phase as 'focus' | 'break',
                     endTime: new Date(data.end_time).getTime(),
                     focusMinutes: data.focus_minutes,
                     breakMinutes: data.break_minutes,
+                    paused: data.paused ?? false,
+                    pausedSecondsLeft: data.paused_seconds_left ?? undefined,
                   }
                   setTimerPhase('running')
                   return state
@@ -138,7 +155,7 @@ export default function RoomPage() {
     await channelRef.current?.send({ type: 'broadcast', event: 'timer', payload: state })
     if (state.phase === 'idle') {
       await supabase.from('room_sessions').upsert(
-        { room_name: slug, phase: 'idle', end_time: null, updated_at: new Date().toISOString() },
+        { room_name: slug, phase: 'idle', end_time: null, paused: false, updated_at: new Date().toISOString() },
         { onConflict: 'room_name' }
       )
     } else {
@@ -147,6 +164,8 @@ export default function RoomPage() {
         room_name: slug, phase: s.phase,
         focus_minutes: s.focusMinutes, break_minutes: s.breakMinutes,
         end_time: new Date(s.endTime).toISOString(),
+        paused: s.paused ?? false,
+        paused_seconds_left: s.pausedSecondsLeft ?? null,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'room_name' })
     }
@@ -165,44 +184,108 @@ export default function RoomPage() {
     </div>
   )
 
-  // Chat is locked only when timer is actively running in focus phase
-  const chatLocked = !isSolo && timerPhase === 'running' && roomState?.phase === 'focus'
+  // Chat locked only when actively running in focus (not paused, not break, not setup)
+  const chatLocked = !isSolo
+    && timerPhase === 'running'
+    && roomState?.phase === 'focus'
+    && !roomState?.paused
 
+  function fmtSecs(s: number) {
+    if (s < 60) return `${s}s`
+    if (s < 3600) return `${Math.floor(s / 60)}m`
+    if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+    return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
+  }
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
-      <header className="glass sticky top-0 z-10 flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-        <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/lobby')} className="transition-colors" style={{ color: 'var(--fg-2)' }} aria-label="Back">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <header className="glass sticky top-0 z-20 flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+
+        {/* Left: profile avatar → stats panel */}
+        <div className="flex items-center gap-3 relative">
+          <button
+            onClick={() => { setShowProfilePanel(p => !p); setShowOnlinePanel(false) }}
+            className="flex items-center gap-2.5 active:scale-95 transition-transform"
+          >
+            <UserAvatar name={displayName} size="sm" />
+            <span className="text-[13px] font-medium" style={{ color: 'var(--fg)' }}>{displayName}</span>
+          </button>
+
+          {showProfilePanel && (
+            <div className="absolute top-full left-0 mt-2 w-64 glass rounded-[16px] p-5 z-30"
+              style={{ boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)' }}>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[13px] font-semibold" style={{ color: 'var(--fg)' }}>Your Stats</span>
+                <button onClick={() => setShowProfilePanel(false)} style={{ color: 'var(--fg-2)' }}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <div className="flex gap-3 mb-2">
+                {[{ label: 'Focus', val: allTimeFocus }, { label: 'Break', val: allTimeBreak }].map(({ label, val }) => (
+                  <div key={label} className="flex flex-col flex-1 p-3 rounded-xl" style={{ background: 'var(--bg)' }}>
+                    <span className="text-[9px] uppercase tracking-widest mb-1" style={{ color: 'var(--fg-2)' }}>{label}</span>
+                    <span className="text-[18px] font-semibold tabular-nums" style={{ color: 'var(--fg)', letterSpacing: '-0.02em' }}>{fmtSecs(val)}</span>
+                  </div>
+                ))}
+              </div>
+              {user?.id === 'guest' && (
+                <p className="text-[11px] text-center mt-2" style={{ color: 'var(--fg-2)' }}>Sign in to save your stats</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Center: room name */}
+        <div className="flex items-center gap-2">
+          <button onClick={() => router.push('/lobby')} style={{ color: 'var(--fg-2)' }} aria-label="Back">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <span className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--fg)', letterSpacing: '-0.02em' }}>hillsum</span>
+          <span className="text-[15px] font-semibold tracking-tight" style={{ color: 'var(--fg)', letterSpacing: '-0.02em' }}>hillsum</span>
           <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--bg)', color: 'var(--fg-2)' }}>
             {isSolo ? 'Solo' : `#${slug}`}
           </span>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Online presence avatars */}
-          {!isSolo && onlineUsers.length > 0 && (
-            <div className="flex items-center">
-              <div className="flex -space-x-2">
-                {onlineUsers.slice(0, 5).map((u, i) => (
-                  <div key={i} title={u.name} className="rounded-full ring-2 ring-white dark:ring-black">
-                    <UserAvatar name={u.name} size="sm" />
-                  </div>
-                ))}
-              </div>
-              {onlineUsers.length > 5 && (
-                <span className="ml-2 text-[11px]" style={{ color: 'var(--fg-2)' }}>+{onlineUsers.length - 5}</span>
-              )}
-              <span className="ml-2 text-[11px]" style={{ color: 'var(--fg-2)' }}>
+
+        {/* Right: online count → user list, theme toggle */}
+        <div className="flex items-center gap-3 relative">
+          {!isSolo && (
+            <button
+              onClick={() => { setShowOnlinePanel(p => !p); setShowProfilePanel(false) }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all active:scale-95"
+              style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="text-[12px] font-medium" style={{ color: 'var(--fg-2)' }}>
                 {onlineUsers.length} online
               </span>
+            </button>
+          )}
+
+          {showOnlinePanel && (
+            <div className="absolute top-full right-0 mt-2 w-56 glass rounded-[16px] p-4 z-30"
+              style={{ boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: 'var(--fg-2)' }}>In this room</span>
+                <button onClick={() => setShowOnlinePanel(false)} style={{ color: 'var(--fg-2)' }}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <div className="flex flex-col gap-2.5">
+                {onlineUsers.length === 0
+                  ? <p className="text-[12px]" style={{ color: 'var(--fg-2)' }}>Just you so far</p>
+                  : onlineUsers.map((u, i) => (
+                    <div key={i} className="flex items-center gap-2.5">
+                      <UserAvatar name={u.name} size="sm" />
+                      <span className="text-[13px] font-medium truncate flex-1" style={{ color: 'var(--fg)' }}>{u.name}</span>
+                      {u.name === displayName && <span className="text-[10px]" style={{ color: 'var(--fg-2)' }}>you</span>}
+                    </div>
+                  ))
+                }
+              </div>
             </div>
           )}
-          <UserAvatar name={displayName} size="sm" />
-          <span className="text-sm font-medium" style={{ color: 'var(--fg-2)' }}>{displayName}</span>
+
           <ThemeToggle />
         </div>
       </header>

@@ -39,15 +39,20 @@ export default function PomodoroRoom({
   const [phase, setPhase] = useState<Phase>('focus')
   const [secondsLeft, setSecondsLeft] = useState(config.focusMinutes * 60)
   const [running, setRunning] = useState(true)
-  const [focusSecs, setFocusSecs] = useState(0)
-  const [breakSecs, setBreakSecs] = useState(0)
+  // Session-only accumulators (reset each session)
+  const [sessionFocusSecs, setSessionFocusSecs] = useState(0)
+  const [sessionBreakSecs, setSessionBreakSecs] = useState(0)
+  // All-time totals loaded from DB
+  const [totalFocusSecs, setTotalFocusSecs] = useState(0)
+  const [totalBreakSecs, setTotalBreakSecs] = useState(0)
   const [showDone, setShowDone] = useState(false)
   const [showStats, setShowStats] = useState(false)
-  // For solo mode — own end time
   const endTimeRef = useRef<number>(Date.now() + config.focusMinutes * 60 * 1000)
   const phaseRef = useRef<Phase>('focus')
   const pausedRef = useRef<number>(config.focusMinutes * 60)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Track when current phase started (for accurate bulk save)
+  const phaseStartRef = useRef<number>(Date.now())
   const prevPhaseRef = useRef<Phase | null>(null)
   const supabase = createClient()
   const isGuest = user.id === 'guest'
@@ -55,21 +60,29 @@ export default function PomodoroRoom({
   // Sync display from roomState (shared timer)
   useEffect(() => {
     if (isSolo || !roomState) return
-    const rem = Math.max(0, Math.round((roomState.endTime - Date.now()) / 1000))
-    endTimeRef.current = roomState.endTime
 
-    // Play sound only on phase transition, not on every re-render
+    // Phase transition sounds
     if (prevPhaseRef.current !== null && prevPhaseRef.current !== roomState.phase) {
       if (roomState.phase === 'break') { playBreakStart(); notify('Break time', `Take a ${roomState.breakMinutes} min break.`) }
       if (roomState.phase === 'focus') { playFocusStart() }
     }
     prevPhaseRef.current = roomState.phase as Phase
-
     setPhase(roomState.phase as Phase)
     phaseRef.current = roomState.phase as Phase
-    setSecondsLeft(rem)
     setShowDone(false)
-    setRunning(true)
+
+    if (roomState.paused && roomState.pausedSecondsLeft !== undefined) {
+      // Paused state — freeze the clock at the saved remaining time
+      clearInterval(intervalRef.current!)
+      setSecondsLeft(roomState.pausedSecondsLeft)
+      pausedRef.current = roomState.pausedSecondsLeft
+      setRunning(false)
+    } else {
+      // Running — sync endTime and start ticking
+      endTimeRef.current = roomState.endTime
+      setSecondsLeft(Math.max(0, Math.round((roomState.endTime - Date.now()) / 1000)))
+      setRunning(true)
+    }
   }, [roomState, isSolo])
 
   // Tab title
@@ -83,32 +96,56 @@ export default function PomodoroRoom({
   useEffect(() => {
     if (typeof window !== 'undefined' && Notification.permission === 'default') Notification.requestPermission()
     playFocusStart()
+    // Load all-time totals from DB
+    if (!isGuest) {
+      supabase.from('profiles').select('total_focus_seconds, total_break_seconds').eq('id', user.id).single()
+        .then(({ data }) => {
+          if (data) {
+            setTotalFocusSecs(data.total_focus_seconds ?? 0)
+            setTotalBreakSecs(data.total_break_seconds ?? 0)
+          }
+        })
+    }
   }, [])
 
-  const saveStats = useCallback(async (f: number, b: number) => {
+  const saveStats = useCallback(async (focusSeconds: number, breakSeconds: number) => {
     if (isGuest) return
-    await supabase.rpc('upsert_daily_stats', { p_user_id: user.id, p_date: new Date().toISOString().split('T')[0], p_focus: f, p_break: b })
-  }, [user])
+    const today = new Date().toISOString().split('T')[0]
+    await supabase.rpc('upsert_daily_stats', {
+      p_user_id: user.id, p_date: today,
+      p_focus: focusSeconds, p_break: breakSeconds,
+    })
+    // Update local totals immediately
+    if (focusSeconds > 0) setTotalFocusSecs(t => t + focusSeconds)
+    if (breakSeconds > 0) setTotalBreakSecs(t => t + breakSeconds)
+  }, [user, isGuest])
 
-  // Tick — drives both solo and shared (shared just reads endTimeRef which is kept in sync)
+  // Tick — drives both solo and shared
   useEffect(() => {
     if (!running || showDone) return
     function tick() {
       const rem = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000))
       setSecondsLeft(rem)
+
+      // Update session accumulators every second
+      if (phaseRef.current === 'focus') setSessionFocusSecs(s => s + 1)
+      else setSessionBreakSecs(s => s + 1)
+
       if (rem <= 0) {
         clearInterval(intervalRef.current!)
+        // Save actual elapsed seconds for this phase
+        const elapsed = Math.round((Date.now() - phaseStartRef.current) / 1000)
+
         if (phaseRef.current === 'focus') {
-          setFocusSecs(f => f + 1); saveStats(1, 0)
+          saveStats(elapsed, 0)
+          phaseStartRef.current = Date.now()
           if (isSolo) {
-            // Solo: self-transition
             const dur = config.breakMinutes * 60
             endTimeRef.current = Date.now() + dur * 1000
             setPhase('break'); phaseRef.current = 'break'; setSecondsLeft(dur)
             playBreakStart(); notify('Break time', `Take a ${config.breakMinutes} min break.`)
             intervalRef.current = setInterval(tick, 500)
           } else {
-            // Shared: broadcast the break transition — everyone will sync via roomState
             onBroadcast?.({
               phase: 'break',
               endTime: Date.now() + config.breakMinutes * 60 * 1000,
@@ -117,7 +154,7 @@ export default function PomodoroRoom({
             })
           }
         } else {
-          setBreakSecs(b => b + 1); saveStats(0, 1)
+          saveStats(0, elapsed)
           setShowDone(true); setRunning(false)
           playSessionEnd(); notify('Session complete', 'Your pomodoro is done.')
           if (!isSolo) onBroadcast?.({ phase: 'idle' })
@@ -125,16 +162,31 @@ export default function PomodoroRoom({
         }
       }
     }
-    intervalRef.current = setInterval(tick, 500)
+    intervalRef.current = setInterval(tick, 1000)
     return () => clearInterval(intervalRef.current!)
   }, [running, showDone, isSolo])
 
   function handlePauseResume() {
     if (running) {
-      pausedRef.current = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000))
+      // Pause — broadcast frozen state to everyone
+      const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000))
+      pausedRef.current = remaining
       clearInterval(intervalRef.current!); setRunning(false)
+      if (!isSolo) onBroadcast?.({
+        phase, endTime: endTimeRef.current,
+        focusMinutes: config.focusMinutes, breakMinutes: config.breakMinutes,
+        paused: true, pausedSecondsLeft: remaining,
+      })
     } else {
-      endTimeRef.current = Date.now() + pausedRef.current * 1000; setRunning(true)
+      // Resume — recalculate endTime from remaining, broadcast running state
+      const newEnd = Date.now() + pausedRef.current * 1000
+      endTimeRef.current = newEnd
+      setRunning(true)
+      if (!isSolo) onBroadcast?.({
+        phase, endTime: newEnd,
+        focusMinutes: config.focusMinutes, breakMinutes: config.breakMinutes,
+        paused: false,
+      })
     }
   }
 
@@ -146,6 +198,8 @@ export default function PomodoroRoom({
 
   function handleRepeat() {
     setShowDone(false); setRunning(true)
+    setSessionFocusSecs(0); setSessionBreakSecs(0)
+    phaseStartRef.current = Date.now()
     if (isSolo) {
       endTimeRef.current = Date.now() + config.focusMinutes * 60 * 1000
       setPhase('focus'); phaseRef.current = 'focus'
@@ -245,7 +299,7 @@ export default function PomodoroRoom({
               {displayName}
             </span>
             <div className="flex items-center gap-3 mt-1">
-              {[{ label: 'Focus', val: focusSecs }, { label: 'Break', val: breakSecs }].map(({ label, val }, i) => (
+              {[{ label: 'Focus', val: totalFocusSecs + sessionFocusSecs }, { label: 'Break', val: totalBreakSecs + sessionBreakSecs }].map(({ label, val }, i) => (
                 <div key={label} className="flex items-center gap-3">
                   {i > 0 && <div className="w-px h-5" style={{ background: 'var(--border)' }} />}
                   <div className="flex flex-col">
@@ -262,7 +316,12 @@ export default function PomodoroRoom({
           </button>
           {showStats && (
             <div className="absolute left-0 bottom-full mb-2 z-20">
-              <StatsPopover focusSecs={focusSecs} breakSecs={breakSecs} userId={isGuest ? null : user.id} onClose={() => setShowStats(false)} />
+              <StatsPopover
+                focusSecs={totalFocusSecs + sessionFocusSecs}
+                breakSecs={totalBreakSecs + sessionBreakSecs}
+                userId={isGuest ? null : user.id}
+                onClose={() => setShowStats(false)}
+              />
             </div>
           )}
         </div>
