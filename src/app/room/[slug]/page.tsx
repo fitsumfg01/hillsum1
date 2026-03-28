@@ -188,7 +188,7 @@ export default function RoomPage() {
             <div className="flex items-center">
               <div className="flex -space-x-2">
                 {onlineUsers.slice(0, 5).map((u, i) => (
-                  <div key={i} title={u.name} className="ring-2 rounded-full" style={{ ringColor: 'var(--bg)' }}>
+                  <div key={i} title={u.name} className="rounded-full ring-2 ring-white dark:ring-black">
                     <UserAvatar name={u.name} size="sm" />
                   </div>
                 ))}
