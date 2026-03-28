@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { TimerConfig } from '@/app/room/[slug]/page'
+import type { TimerConfig } from '@/lib/types'
 import type { User } from '@supabase/supabase-js'
 import Chat from './Chat'
 import UserAvatar from './UserAvatar'

@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import type { TimerConfig } from '@/app/room/page'
+import type { TimerConfig } from '@/lib/types'
 
 // Scientific limits: focus 10–90 min, break 5–30 min
 const PRESETS: TimerConfig[] = [

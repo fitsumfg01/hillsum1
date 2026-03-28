@@ -7,8 +7,9 @@ import PomodoroRoom from '@/components/PomodoroRoom'
 import ThemeToggle from '@/components/ThemeToggle'
 import UserAvatar from '@/components/UserAvatar'
 import type { User } from '@supabase/supabase-js'
+import type { TimerConfig } from '@/lib/types'
 
-export type TimerConfig = { focusMinutes: number; breakMinutes: number }
+export type { TimerConfig }
 
 export default function RoomPage() {
   const { slug } = useParams<{ slug: string }>()
