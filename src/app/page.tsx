@@ -24,8 +24,8 @@ export default function Home() {
   }, [])
 
   if (checking) return (
-    <div className="min-h-screen flex items-center justify-center bg-primary-600">
-      <h1 className="font-display text-5xl font-bold text-white tracking-widest animate-pulse">hillsum</h1>
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+      <h1 className="font-display text-5xl font-bold text-primary-600 dark:text-primary-400 tracking-widest opacity-60 animate-pulse">hillsum</h1>
     </div>
   )
 
