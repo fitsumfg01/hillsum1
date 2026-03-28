@@ -110,7 +110,7 @@ export default function Chat({
           })
           .on('presence', { event: 'join' }, ({ newPresences }) => {
             if (isFirstMount.current) return // don't notify on own join
-            const name = (newPresences as { name: string }[])[0]?.name
+            const name = (newPresences as unknown as { name: string }[])[0]?.name
             if (name && name !== displayName) {
               playJoinSound()
               setJoinNotice(`${name} joined`)
