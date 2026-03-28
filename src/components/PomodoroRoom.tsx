@@ -77,6 +77,7 @@ export default function PomodoroRoom({
   }, [])
 
   const saveStats = useCallback(async (addFocus: number, addBreak: number) => {
+    if (user.id === 'guest') return
     const today = new Date().toISOString().split('T')[0]
     await supabase.rpc('upsert_daily_stats', {
       p_user_id: user.id,

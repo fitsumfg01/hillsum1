@@ -9,9 +9,8 @@ export default function GuestForm({ onBack }: { onBack: () => void }) {
   function handleJoin(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
-    // Store guest name in sessionStorage (cleared on tab close)
     sessionStorage.setItem('guest_name', name.trim())
-    router.push('/room')
+    router.push('/room/solo-guest')
   }
 
   return (

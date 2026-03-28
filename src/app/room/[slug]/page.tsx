@@ -24,6 +24,15 @@ export default function RoomPage() {
   const supabase = createClient()
 
   useEffect(() => {
+    // Check for guest first
+    const guestName = sessionStorage.getItem('guest_name')
+    if (guestName) {
+      setDisplayName(guestName)
+      setUser({ id: 'guest', user_metadata: {} } as unknown as User)
+      setRoomExists(true)
+      return
+    }
+
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace('/'); return }
       setUser(data.user)
@@ -34,7 +43,6 @@ export default function RoomPage() {
         ?? 'User'
       )
     })
-    // solo rooms don't exist in DB — treat slug starting with "solo-" as always valid
     if (slug.startsWith('solo-')) { setRoomExists(true); return }
     supabase.from('rooms').select('name').eq('name', slug).single()
       .then(({ data }) => setRoomExists(!!data))
