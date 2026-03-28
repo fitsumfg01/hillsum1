@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #eff6ff;
+  --fg: #1e3a8a;
+  --card: #ffffff;
+  --border: #bfdbfe;
+  --avatar-bg: #2563eb;
+  --avatar-fg: #ffffff;
+}
+
+.dark {
+  --bg: #0f172a;
+  --fg: #93c5fd;
+  --card: #1e293b;
+  --border: #1e40af;
+  --avatar-bg: #1e40af;
+  --avatar-fg: #bfdbfe;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
+  background-color: var(--bg);
+  color: var(--fg);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.font-display, h1, h2, h3 {
+  font-family: var(--font-space-grotesk), 'Space Grotesk', sans-serif;
+}
+
+.avatar-initials {
+  background-color: var(--avatar-bg);
+  color: var(--avatar-fg);
+  font-family: var(--font-space-grotesk), 'Space Grotesk', sans-serif;
+  transition: background-color 0.3s, color 0.3s;
+}
