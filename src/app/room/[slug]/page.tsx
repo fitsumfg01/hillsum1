@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import PomodoroSetup from '@/components/PomodoroSetup'
 import PomodoroRoom from '@/components/PomodoroRoom'
+import Chat from '@/components/Chat'
 import ThemeToggle from '@/components/ThemeToggle'
 import UserAvatar from '@/components/UserAvatar'
 import type { User } from '@supabase/supabase-js'
@@ -14,7 +15,7 @@ export type { TimerConfig }
 
 export type RoomState = {
   phase: 'focus' | 'break' | 'idle'
-  endTime: number        // ms timestamp
+  endTime: number
   focusMinutes: number
   breakMinutes: number
 }
@@ -24,8 +25,9 @@ export default function RoomPage() {
   const [user, setUser] = useState<User | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [roomExists, setRoomExists] = useState<boolean | null>(null)
-  // Shared room state — null means "waiting for first person to start"
   const [roomState, setRoomState] = useState<RoomState | null>(null)
+  // 'setup' = choosing time, 'running' = timer active
+  const [timerPhase, setTimerPhase] = useState<'setup' | 'running'>('setup')
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -41,7 +43,6 @@ export default function RoomPage() {
     }
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
-        // Save intended room so we can return after auth
         if (!isSolo) sessionStorage.setItem('intended_room', slug)
         router.replace('/')
         return
@@ -58,49 +59,46 @@ export default function RoomPage() {
       .then(({ data }) => setRoomExists(!!data))
   }, [slug])
 
-  // Set up the shared broadcast channel for this room
+  // Broadcast channel — set up as soon as we know the room exists
   useEffect(() => {
-    if (isSolo || !roomExists) return
+    if (isSolo || roomExists !== true) return
 
-    // 1. Load persisted state from DB (for late joiners)
+    // Load persisted state for late joiners
     supabase.from('room_sessions').select('*').eq('room_name', slug).single()
       .then(({ data }) => {
         if (data && data.end_time && data.phase !== 'idle') {
-          setRoomState({
+          const state: RoomState = {
             phase: data.phase as 'focus' | 'break',
             endTime: new Date(data.end_time).getTime(),
             focusMinutes: data.focus_minutes,
             breakMinutes: data.break_minutes,
-          })
+          }
+          setRoomState(state)
+          setTimerPhase('running')
         }
       })
 
-    // 2. Subscribe to broadcast — instant sync for everyone in the room
     const channel = supabase.channel(`room:${slug}`, {
       config: { broadcast: { self: true } },
     })
-
     channel
       .on('broadcast', { event: 'timer' }, ({ payload }: { payload: RoomState | { phase: 'idle' } }) => {
         if (payload.phase === 'idle') {
           setRoomState(null)
+          setTimerPhase('setup')
         } else {
           setRoomState(payload as RoomState)
+          setTimerPhase('running')
         }
       })
       .subscribe()
 
     channelRef.current = channel
-
     return () => { supabase.removeChannel(channel) }
   }, [slug, roomExists, isSolo])
 
-  // Called by the person who starts/transitions the timer
   async function broadcastState(state: RoomState | { phase: 'idle' }) {
-    // Broadcast to all clients instantly
     await channelRef.current?.send({ type: 'broadcast', event: 'timer', payload: state })
-
-    // Also persist to DB so late joiners can catch up
     if (state.phase === 'idle') {
       await supabase.from('room_sessions').upsert(
         { room_name: slug, phase: 'idle', end_time: null, updated_at: new Date().toISOString() },
@@ -130,6 +128,9 @@ export default function RoomPage() {
     </div>
   )
 
+  // Chat is locked only when timer is actively running in focus phase
+  const chatLocked = !isSolo && timerPhase === 'running' && roomState?.phase === 'focus'
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
       <header className="glass sticky top-0 z-10 flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
@@ -151,30 +152,52 @@ export default function RoomPage() {
         </div>
       </header>
 
-      <main className="flex-1 flex items-start justify-center p-4 pt-6">
-        {!roomState && !isSolo ? (
-          <PomodoroSetup onStart={(cfg) => {
-            const state: RoomState = {
-              phase: 'focus',
-              endTime: Date.now() + cfg.focusMinutes * 60 * 1000,
-              focusMinutes: cfg.focusMinutes,
-              breakMinutes: cfg.breakMinutes,
-            }
-            broadcastState(state)
-          }} />
-        ) : (
-          <PomodoroRoom
-            roomState={isSolo ? null : roomState}
-            config={roomState ? { focusMinutes: roomState.focusMinutes, breakMinutes: roomState.breakMinutes } : { focusMinutes: 25, breakMinutes: 5 }}
+      {/* Main layout: timer left, chat right — chat always present */}
+      <div className="flex-1 flex gap-5 p-4 pt-6 max-w-5xl mx-auto w-full">
+
+        {/* Left: timer area */}
+        <div className="flex-1 min-w-0">
+          {timerPhase === 'setup' && !isSolo ? (
+            <PomodoroSetup onStart={(cfg) => {
+              const state: RoomState = {
+                phase: 'focus',
+                endTime: Date.now() + cfg.focusMinutes * 60 * 1000,
+                focusMinutes: cfg.focusMinutes,
+                breakMinutes: cfg.breakMinutes,
+              }
+              broadcastState(state)
+            }} />
+          ) : (
+            <PomodoroRoom
+              roomState={isSolo ? null : roomState}
+              config={roomState
+                ? { focusMinutes: roomState.focusMinutes, breakMinutes: roomState.breakMinutes }
+                : { focusMinutes: 25, breakMinutes: 5 }}
+              user={user}
+              displayName={displayName}
+              roomSlug={slug}
+              isSolo={isSolo}
+              onBroadcast={isSolo ? undefined : broadcastState}
+              onTimerPhaseChange={setTimerPhase}
+              onDone={() => {
+                if (!isSolo) broadcastState({ phase: 'idle' })
+                setTimerPhase('setup')
+              }}
+            />
+          )}
+        </div>
+
+        {/* Right: chat — always visible for logged-in users in a room */}
+        <div className="w-[300px] flex-shrink-0 h-[calc(100vh-72px)]">
+          <Chat
             user={user}
             displayName={displayName}
             roomSlug={slug}
             isSolo={isSolo}
-            onBroadcast={isSolo ? undefined : broadcastState}
-            onDone={() => { if (!isSolo) broadcastState({ phase: 'idle' }) }}
+            focusLocked={chatLocked}
           />
-        )}
-      </main>
+        </div>
+      </div>
     </div>
   )
 }

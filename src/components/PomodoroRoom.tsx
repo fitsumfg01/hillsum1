@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { TimerConfig } from '@/lib/types'
 import type { User } from '@supabase/supabase-js'
 import type { RoomState } from '@/app/room/[slug]/page'
-import Chat, { playFocusStart, playBreakStart, playSessionEnd } from './Chat'
+import { playFocusStart, playBreakStart, playSessionEnd } from './Chat'
 import UserAvatar from './UserAvatar'
 import StatsPopover from './StatsPopover'
 
@@ -24,7 +24,7 @@ function notify(title: string, body: string) {
 
 export default function PomodoroRoom({
   config, user, displayName, roomSlug, isSolo = false,
-  roomState, onBroadcast, onDone,
+  roomState, onBroadcast, onTimerPhaseChange, onDone,
 }: {
   config: TimerConfig
   user: User
@@ -33,6 +33,7 @@ export default function PomodoroRoom({
   isSolo?: boolean
   roomState: RoomState | null
   onBroadcast?: (state: RoomState | { phase: 'idle' }) => void
+  onTimerPhaseChange?: (phase: 'setup' | 'running') => void
   onDone: () => void
 }) {
   const [phase, setPhase] = useState<Phase>('focus')
@@ -120,6 +121,7 @@ export default function PomodoroRoom({
           setShowDone(true); setRunning(false)
           playSessionEnd(); notify('Session complete', 'Your pomodoro is done.')
           if (!isSolo) onBroadcast?.({ phase: 'idle' })
+          onTimerPhaseChange?.('setup')
         }
       }
     }
@@ -165,10 +167,7 @@ export default function PomodoroRoom({
   const isFocus = phase === 'focus'
 
   return (
-    <div className="w-full max-w-5xl flex gap-5 h-[calc(100vh-72px)]">
-
-      {/* Left */}
-      <div className="flex-1 flex flex-col gap-4 min-w-0">
+    <div className="w-full flex flex-col gap-4 h-[calc(100vh-72px)]">
 
         {/* Timer card */}
         <div className="flex-1 glass rounded-card flex flex-col items-center justify-center gap-7 px-8"
@@ -267,11 +266,6 @@ export default function PomodoroRoom({
             </div>
           )}
         </div>
-      </div>
-
-      {/* Chat */}
-      <div className="w-[300px] flex-shrink-0">
-        <Chat user={user} displayName={displayName} roomSlug={roomSlug} isSolo={isSolo} focusLocked={isFocus} />
       </div>
     </div>
   )
