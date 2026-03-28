@@ -144,7 +144,7 @@ export default function Chat({
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
     const content = text.trim()
-    if (!content) return
+    if (!content || focusLocked) return
     setText('')
 
     if (isSolo) {
@@ -280,8 +280,9 @@ export default function Chat({
             ref={inputRef}
             value={text}
             onChange={e => setText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e) } }}
-            placeholder={focusLocked && !isSolo ? 'Chatting during focus…' : 'Message…'}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !focusLocked) { e.preventDefault(); sendMessage(e) } }}
+            placeholder={focusLocked && !isSolo ? '🔒 Chat unlocks on break' : 'Message…'}
+            disabled={focusLocked && !isSolo}
             maxLength={500}
             className="flex-1 text-[13px] bg-primary-50 dark:bg-white/6 border border-[var(--border)] rounded-[14px] px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-400/50 dark:text-white placeholder-primary-300 transition"
           />
