@@ -26,11 +26,15 @@ export default function LoginForm({ onBack, onSignup }: { onBack: () => void; on
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     setLoading(false)
     if (error) { setError(error.message); return }
-    router.push('/lobby')
+    const intended = sessionStorage.getItem('intended_room')
+    sessionStorage.removeItem('intended_room')
+    router.push(intended ? `/room/${intended}` : '/lobby')
   }
 
   async function handleGoogle() {
-    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${location.origin}/auth/callback` } })
+    const intended = sessionStorage.getItem('intended_room')
+    const next = intended ? `/room/${intended}` : '/lobby'
+    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${location.origin}/auth/callback?next=${next}` } })
   }
 
   return (

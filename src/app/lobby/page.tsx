@@ -46,6 +46,8 @@ export default function LobbyPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  const [intendedRoom, setIntendedRoom] = useState<string | null>(null)
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace('/'); return }
@@ -56,6 +58,8 @@ export default function LobbyPage() {
         ?? data.user.email?.split('@')[0] ?? 'User'
       )
     })
+    const saved = sessionStorage.getItem('intended_room')
+    if (saved) setIntendedRoom(saved)
   }, [])
 
   function handleNameInput(raw: string) { setCreateName(sanitize(raw)); setCreateError('') }
@@ -107,6 +111,24 @@ export default function LobbyPage() {
             </h2>
             <p className="text-sm mt-1" style={{ color: 'var(--fg-2)' }}>Create a room, join one, or focus solo.</p>
           </motion.div>
+
+          {/* Intended room banner */}
+          {intendedRoom && (
+            <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+              className="glass rounded-card px-5 py-4 flex items-center justify-between"
+              style={{ boxShadow: 'var(--shadow-sm)', borderLeft: '3px solid var(--accent)' }}>
+              <div>
+                <p className="text-[13px] font-semibold" style={{ color: 'var(--fg)' }}>You were invited to a room</p>
+                <p className="text-[12px] mt-0.5" style={{ color: 'var(--fg-2)' }}>#{intendedRoom}</p>
+              </div>
+              <button
+                onClick={() => { sessionStorage.removeItem('intended_room'); router.push(`/room/${intendedRoom}`) }}
+                className="px-4 py-2 rounded-pill text-[13px] font-semibold text-white transition-all active:scale-[0.97] flex-shrink-0"
+                style={{ background: 'var(--accent)' }}>
+                Join Room
+              </button>
+            </motion.div>
+          )}
 
           {/* Create */}
           <Card index={0}>

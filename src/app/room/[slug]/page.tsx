@@ -26,7 +26,7 @@ export default function RoomPage() {
   const [roomExists, setRoomExists] = useState<boolean | null>(null)
   // Shared room state — null means "waiting for first person to start"
   const [roomState, setRoomState] = useState<RoomState | null>(null)
-  const channelRef = useRef<ReturnType<typeof createClient>['channel'] extends (...args: infer A) => infer R ? R : never | null>(null)
+  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
   const router = useRouter()
   const supabase = createClient()
   const isSolo = slug.startsWith('solo-')
@@ -40,7 +40,12 @@ export default function RoomPage() {
       return
     }
     supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) { router.replace('/'); return }
+      if (!data.user) {
+        // Save intended room so we can return after auth
+        if (!isSolo) sessionStorage.setItem('intended_room', slug)
+        router.replace('/')
+        return
+      }
       setUser(data.user)
       setDisplayName(
         data.user.user_metadata?.preferred_name
@@ -85,7 +90,6 @@ export default function RoomPage() {
       })
       .subscribe()
 
-    // @ts-expect-error storing channel ref
     channelRef.current = channel
 
     return () => { supabase.removeChannel(channel) }
@@ -94,7 +98,6 @@ export default function RoomPage() {
   // Called by the person who starts/transitions the timer
   async function broadcastState(state: RoomState | { phase: 'idle' }) {
     // Broadcast to all clients instantly
-    // @ts-expect-error channel ref
     await channelRef.current?.send({ type: 'broadcast', event: 'timer', payload: state })
 
     // Also persist to DB so late joiners can catch up
