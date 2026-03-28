@@ -266,7 +266,6 @@ export default function PomodoroRoom({
             </div>
           )}
         </div>
-      </div>
     </div>
   )
 }
