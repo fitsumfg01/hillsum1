@@ -7,6 +7,8 @@ import PomodoroRoom from '@/components/PomodoroRoom'
 import ThemeToggle from '@/components/ThemeToggle'
 import UserAvatar from '@/components/UserAvatar'
 import type { User } from '@supabase/supabase-js'
+
+export const dynamic = 'force-dynamic'
 import type { TimerConfig } from '@/lib/types'
 
 export type { TimerConfig }

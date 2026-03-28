@@ -7,6 +7,8 @@ import ThemeToggle from '@/components/ThemeToggle'
 import UserAvatar from '@/components/UserAvatar'
 import type { User } from '@supabase/supabase-js'
 
+export const dynamic = 'force-dynamic'
+
 const VALID_NAME = /^[a-z0-9-]{3,40}$/
 
 function sanitize(raw: string) {

@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import AuthGate from '@/components/AuthGate'
 
+export const dynamic = 'force-dynamic'
+
 export default function Home() {
   const [loaded, setLoaded] = useState(false)
   const [checking, setChecking] = useState(true)
