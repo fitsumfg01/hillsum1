@@ -74,7 +74,12 @@ export default function Chat({
           .eq('room_id', roomId)
           .order('created_at', { ascending: true })
           .limit(100)
-          .then(({ data }) => { if (data) setMessages(data as Message[]) })
+          .then(({ data }) => {
+            if (data) setMessages(data.map(m => ({
+              ...m,
+              profiles: Array.isArray(m.profiles) ? m.profiles[0] ?? null : m.profiles as { preferred_name: string } | null,
+            })))
+          })
 
         // Realtime: new messages
         const msgChannel = supabase
