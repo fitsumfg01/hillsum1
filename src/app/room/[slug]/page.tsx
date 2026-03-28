@@ -28,6 +28,7 @@ export default function RoomPage() {
   const [roomState, setRoomState] = useState<RoomState | null>(null)
   // 'setup' = choosing time, 'running' = timer active
   const [timerPhase, setTimerPhase] = useState<'setup' | 'running'>('setup')
+  const [onlineUsers, setOnlineUsers] = useState<{ name: string; user_id: string }[]>([])
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -63,25 +64,21 @@ export default function RoomPage() {
   useEffect(() => {
     if (isSolo || roomExists !== true) return
 
-    // Load persisted state for late joiners
-    supabase.from('room_sessions').select('*').eq('room_name', slug).single()
-      .then(({ data }) => {
-        if (data && data.end_time && data.phase !== 'idle') {
-          const state: RoomState = {
-            phase: data.phase as 'focus' | 'break',
-            endTime: new Date(data.end_time).getTime(),
-            focusMinutes: data.focus_minutes,
-            breakMinutes: data.break_minutes,
-          }
-          setRoomState(state)
-          setTimerPhase('running')
-        }
-      })
-
     const channel = supabase.channel(`room:${slug}`, {
-      config: { broadcast: { self: true } },
+      config: {
+        broadcast: { self: true },
+        presence: { key: user?.id ?? 'anon' },
+      },
     })
+
     channel
+      // Presence: who's in the room
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState<{ name: string; user_id: string }>()
+        const users = Object.values(state).flat()
+        setOnlineUsers(users)
+      })
+      // Timer state pushed by any member
       .on('broadcast', { event: 'timer' }, ({ payload }: { payload: RoomState | { phase: 'idle' } }) => {
         if (payload.phase === 'idle') {
           setRoomState(null)
@@ -91,11 +88,51 @@ export default function RoomPage() {
           setTimerPhase('running')
         }
       })
-      .subscribe()
+      // New joiner requests current state — existing members respond
+      .on('broadcast', { event: 'request-sync' }, () => {
+        // Only respond if we have state (avoid everyone responding)
+        setRoomState(prev => {
+          if (prev) {
+            channel.send({ type: 'broadcast', event: 'timer', payload: prev })
+          }
+          return prev
+        })
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          // Track presence
+          await channel.track({
+            user_id: user?.id ?? 'guest',
+            name: displayName,
+            online_at: new Date().toISOString(),
+          })
+
+          // Ask existing members for current state (faster than DB)
+          await channel.send({ type: 'broadcast', event: 'request-sync', payload: {} })
+
+          // Also fall back to DB for late joiners (in case room is empty)
+          supabase.from('room_sessions').select('*').eq('room_name', slug).single()
+            .then(({ data }) => {
+              if (data && data.end_time && data.phase !== 'idle') {
+                setRoomState(prev => {
+                  if (prev) return prev // already got state from broadcast
+                  const state: RoomState = {
+                    phase: data.phase as 'focus' | 'break',
+                    endTime: new Date(data.end_time).getTime(),
+                    focusMinutes: data.focus_minutes,
+                    breakMinutes: data.break_minutes,
+                  }
+                  setTimerPhase('running')
+                  return state
+                })
+              }
+            })
+        }
+      })
 
     channelRef.current = channel
     return () => { supabase.removeChannel(channel) }
-  }, [slug, roomExists, isSolo])
+  }, [slug, roomExists, isSolo, user, displayName])
 
   async function broadcastState(state: RoomState | { phase: 'idle' }) {
     await channelRef.current?.send({ type: 'broadcast', event: 'timer', payload: state })
@@ -146,6 +183,24 @@ export default function RoomPage() {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          {/* Online presence avatars */}
+          {!isSolo && onlineUsers.length > 0 && (
+            <div className="flex items-center">
+              <div className="flex -space-x-2">
+                {onlineUsers.slice(0, 5).map((u, i) => (
+                  <div key={i} title={u.name} className="ring-2 rounded-full" style={{ ringColor: 'var(--bg)' }}>
+                    <UserAvatar name={u.name} size="sm" />
+                  </div>
+                ))}
+              </div>
+              {onlineUsers.length > 5 && (
+                <span className="ml-2 text-[11px]" style={{ color: 'var(--fg-2)' }}>+{onlineUsers.length - 5}</span>
+              )}
+              <span className="ml-2 text-[11px]" style={{ color: 'var(--fg-2)' }}>
+                {onlineUsers.length} online
+              </span>
+            </div>
+          )}
           <UserAvatar name={displayName} size="sm" />
           <span className="text-sm font-medium" style={{ color: 'var(--fg-2)' }}>{displayName}</span>
           <ThemeToggle />
