@@ -2,12 +2,11 @@
 import { useState } from 'react'
 import type { TimerConfig } from '@/lib/types'
 
-// Scientific limits: focus 10–90 min, break 5–30 min
-const PRESETS: TimerConfig[] = [
-  { focusMinutes: 25, breakMinutes: 5 },
-  { focusMinutes: 50, breakMinutes: 10 },
-  { focusMinutes: 52, breakMinutes: 17 },
-  { focusMinutes: 60, breakMinutes: 15 },
+const PRESETS: (TimerConfig & { label: string; sublabel: string })[] = [
+  { focusMinutes: 25, breakMinutes: 5,  label: '25 min', sublabel: '5 min break' },
+  { focusMinutes: 50, breakMinutes: 10, label: '50 min', sublabel: '10 min break' },
+  { focusMinutes: 52, breakMinutes: 17, label: '52 min', sublabel: '17 min break' },
+  { focusMinutes: 60, breakMinutes: 15, label: '60 min', sublabel: '15 min break' },
 ]
 
 export default function PomodoroSetup({ onStart }: { onStart: (c: TimerConfig) => void }) {
@@ -16,72 +15,60 @@ export default function PomodoroSetup({ onStart }: { onStart: (c: TimerConfig) =
   const [brk, setBrk] = useState(5)
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 w-full max-w-md flex flex-col gap-6">
-      <h2 className="text-primary-700 dark:text-primary-300 font-semibold text-xl text-center">
-        Choose your focus time
-      </h2>
+    <div className="glass rounded-card p-8 w-full max-w-sm flex flex-col gap-6" style={{ boxShadow: 'var(--shadow-lg)' }}>
+      <div>
+        <h2 className="text-[22px] font-semibold tracking-tight" style={{ color: 'var(--fg)', letterSpacing: '-0.02em' }}>
+          Set your focus time
+        </h2>
+        <p className="text-sm mt-1" style={{ color: 'var(--fg-2)' }}>Choose a preset or set a custom duration.</p>
+      </div>
 
       {!custom ? (
         <>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             {PRESETS.map((p) => (
-              <button
-                key={`${p.focusMinutes}-${p.breakMinutes}`}
-                onClick={() => onStart(p)}
-                className="flex flex-col items-center py-4 rounded-xl border-2 border-primary-200 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-gray-700 transition"
-              >
-                <span className="text-2xl font-bold text-primary-700 dark:text-primary-300">
-                  {p.focusMinutes}m
-                </span>
-                <span className="text-xs text-primary-400">
-                  {p.breakMinutes}m break
-                </span>
+              <button key={p.label} onClick={() => onStart(p)}
+                className="flex flex-col items-start p-4 rounded-[14px] transition-all active:scale-[0.97] text-left"
+                style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-2)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg)' }}>
+                <span className="text-[22px] font-semibold tracking-tight" style={{ color: 'var(--fg)', letterSpacing: '-0.02em' }}>{p.label}</span>
+                <span className="text-xs mt-0.5" style={{ color: 'var(--fg-2)' }}>{p.sublabel}</span>
               </button>
             ))}
           </div>
-          <button
-            onClick={() => setCustom(true)}
-            className="text-sm text-primary-500 hover:underline text-center"
-          >
-            Set custom time →
+          <button onClick={() => setCustom(true)} className="text-sm font-medium text-center" style={{ color: 'var(--accent)' }}>
+            Custom duration
           </button>
         </>
       ) : (
-        <>
-          <div className="flex flex-col gap-4">
-            <label className="flex flex-col gap-1">
-              <span className="text-sm text-primary-600 dark:text-primary-400">
-                Focus time: <strong>{focus} min</strong>
-              </span>
-              <input
-                type="range" min={10} max={90} value={focus}
-                onChange={e => setFocus(+e.target.value)}
-                className="accent-primary-600"
-              />
-              <span className="text-xs text-primary-300">10 – 90 minutes</span>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-sm text-primary-600 dark:text-primary-400">
-                Break time: <strong>{brk} min</strong>
-              </span>
-              <input
-                type="range" min={5} max={30} value={brk}
-                onChange={e => setBrk(+e.target.value)}
-                className="accent-primary-600"
-              />
-              <span className="text-xs text-primary-300">5 – 30 minutes</span>
-            </label>
-          </div>
-          <button
-            onClick={() => onStart({ focusMinutes: focus, breakMinutes: brk })}
-            className="w-full py-3 rounded-xl bg-primary-600 text-white hover:bg-primary-700 transition font-medium"
-          >
-            Start
+        <div className="flex flex-col gap-5">
+          {[
+            { label: 'Focus', value: focus, set: setFocus, min: 10, max: 90, unit: 'min' },
+            { label: 'Break', value: brk,   set: setBrk,   min: 5,  max: 30, unit: 'min' },
+          ].map(({ label, value, set, min, max }) => (
+            <div key={label} className="flex flex-col gap-2">
+              <div className="flex justify-between items-baseline">
+                <span className="text-sm font-medium" style={{ color: 'var(--fg)' }}>{label}</span>
+                <span className="text-[22px] font-semibold tabular-nums" style={{ color: 'var(--fg)', letterSpacing: '-0.02em' }}>{value}<span className="text-sm font-normal ml-0.5" style={{ color: 'var(--fg-2)' }}>min</span></span>
+              </div>
+              <input type="range" min={min} max={max} value={value} onChange={e => set(+e.target.value)}
+                className="w-full h-1 rounded-full appearance-none cursor-pointer"
+                style={{ accentColor: 'var(--accent)' }} />
+              <div className="flex justify-between text-xs" style={{ color: 'var(--fg-2)' }}>
+                <span>{min} min</span><span>{max} min</span>
+              </div>
+            </div>
+          ))}
+          <button onClick={() => onStart({ focusMinutes: focus, breakMinutes: brk })}
+            className="w-full py-3 rounded-pill text-sm font-semibold text-white transition-all active:scale-[0.98]"
+            style={{ background: 'var(--accent)' }}>
+            Begin Session
           </button>
-          <button onClick={() => setCustom(false)} className="text-sm text-primary-400 hover:underline text-center">
-            ← Back to presets
+          <button onClick={() => setCustom(false)} className="text-sm text-center" style={{ color: 'var(--fg-2)' }}>
+            Back to presets
           </button>
-        </>
+        </div>
       )}
     </div>
   )

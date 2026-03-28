@@ -14,27 +14,32 @@ export default function AuthGate() {
   if (mode === 'signup') return <SignupForm onBack={() => setMode('choose')} onLogin={() => setMode('login')} />
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 w-80 flex flex-col gap-4">
-      <p className="text-center text-primary-700 dark:text-primary-300 font-medium">
-        How do you want to join?
+    <div className="glass rounded-card p-8 w-[340px] flex flex-col gap-3" style={{ boxShadow: 'var(--shadow-lg)' }}>
+      <p className="text-center text-sm font-medium mb-1" style={{ color: 'var(--fg-2)' }}>
+        How would you like to continue?
       </p>
       <button
-        onClick={() => setMode('guest')}
-        className="w-full py-3 rounded-xl border-2 border-primary-300 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-gray-700 transition font-medium"
-      >
-        Continue as Guest
-      </button>
-      <button
         onClick={() => setMode('signup')}
-        className="w-full py-3 rounded-xl bg-primary-600 text-white hover:bg-primary-700 transition font-medium"
+        className="w-full py-3 rounded-pill text-sm font-semibold text-white transition-all active:scale-[0.98]"
+        style={{ background: 'var(--accent)' }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-h)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'var(--accent)')}
       >
         Create Account
       </button>
       <button
         onClick={() => setMode('login')}
-        className="text-sm text-center text-primary-500 hover:underline"
+        className="w-full py-3 rounded-pill text-sm font-semibold transition-all active:scale-[0.98]"
+        style={{ background: 'var(--bg-2)', color: 'var(--fg)', border: '1px solid var(--border)' }}
       >
-        Already have an account? Sign in
+        Sign In
+      </button>
+      <button
+        onClick={() => setMode('guest')}
+        className="w-full py-2.5 text-sm transition-all"
+        style={{ color: 'var(--accent)' }}
+      >
+        Continue as Guest
       </button>
     </div>
   )

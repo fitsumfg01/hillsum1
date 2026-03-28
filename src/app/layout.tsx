@@ -1,27 +1,21 @@
 import type { Metadata } from 'next'
-import { DM_Sans, Space_Grotesk } from 'next/font/google'
+import { Inter } from 'next/font/google'
 import './globals.css'
 
-const dmSans = DM_Sans({
+const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-dm-sans',
-  display: 'swap',
-})
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ['latin'],
-  variable: '--font-space-grotesk',
+  variable: '--font-inter',
   display: 'swap',
 })
 
 export const metadata: Metadata = {
   title: 'Hillsum',
-  description: 'Live Pomodoro Group Focus',
+  description: 'Focus together.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${dmSans.variable} ${spaceGrotesk.variable}`}>
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
       <body>{children}</body>
     </html>
   )

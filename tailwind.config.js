@@ -4,19 +4,25 @@ module.exports = {
   content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['var(--font-inter)', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+        display: ['var(--font-inter)', 'system-ui', '-apple-system', 'sans-serif'],
+      },
       colors: {
-        primary: {
-          50:  '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
+        apple: {
+          white:    '#FFFFFF',
+          offwhite: '#F5F5F7',
+          silver:   '#E8E8ED',
+          gray:     '#6E6E73',
+          darkgray: '#3A3A3C',
+          black:    '#1D1D1F',
+          blue:     '#0071E3',
+          bluehover:'#0077ED',
         },
+      },
+      borderRadius: {
+        card: '18px',
+        pill: '980px',
       },
     },
   },

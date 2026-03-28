@@ -2,77 +2,85 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Apple-style design tokens ── */
 :root {
-  --bg: #f0f4ff;
-  --fg: #1a2e6e;
-  --card: rgba(255,255,255,0.85);
-  --border: rgba(191,219,254,0.8);
-  --avatar-bg: #2563eb;
-  --avatar-fg: #ffffff;
+  --bg:        #F5F5F7;
+  --bg-2:      #FFFFFF;
+  --fg:        #1D1D1F;
+  --fg-2:      #6E6E73;
+  --card:      rgba(255, 255, 255, 0.72);
+  --border:    rgba(0, 0, 0, 0.08);
+  --accent:    #0071E3;
+  --accent-h:  #0077ED;
+  --avatar-bg: #0071E3;
+  --avatar-fg: #FFFFFF;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.04);
 }
 
 .dark {
-  --bg: #0a0f1e;
-  --fg: #a5c0f5;
-  --card: rgba(20,30,60,0.85);
-  --border: rgba(30,64,175,0.5);
-  --avatar-bg: #1e40af;
-  --avatar-fg: #bfdbfe;
+  --bg:        #000000;
+  --bg-2:      #1C1C1E;
+  --fg:        #F5F5F7;
+  --fg-2:      #98989D;
+  --card:      rgba(28, 28, 30, 0.80);
+  --border:    rgba(255, 255, 255, 0.10);
+  --accent:    #2997FF;
+  --accent-h:  #3DA0FF;
+  --avatar-bg: #1A6FD4;
+  --avatar-fg: #FFFFFF;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.5);
 }
 
-* { box-sizing: border-box; }
+/* ── Base ── */
+*, *::before, *::after { box-sizing: border-box; }
 
-html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
 
 body {
-  font-family: var(--font-dm-sans), 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
   background-color: var(--bg);
   color: var(--fg);
-  transition: background-color 0.4s, color 0.4s;
-}
-
-/* Subtle radial gradient background */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(96,165,250,0.12) 0%, transparent 70%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.dark body::before {
-  background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(30,64,175,0.2) 0%, transparent 70%);
-}
-
-#__next, main { position: relative; z-index: 1; }
-
-.font-display, h1, h2, h3 {
-  font-family: var(--font-space-grotesk), 'Space Grotesk', -apple-system, sans-serif;
-}
-
-.avatar-initials {
-  background-color: var(--avatar-bg);
-  color: var(--avatar-fg);
-  font-family: var(--font-space-grotesk), 'Space Grotesk', sans-serif;
   transition: background-color 0.3s, color 0.3s;
+  min-height: 100dvh;
 }
 
-/* Glassmorphism card utility */
+/* ── Glass card ── */
 .glass {
   background: var(--card);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
   border: 1px solid var(--border);
 }
 
-/* Smooth scrollbar */
-::-webkit-scrollbar { width: 4px; }
+/* ── Avatar ── */
+.avatar-initials {
+  background-color: var(--avatar-bg);
+  color: var(--avatar-fg);
+  transition: background-color 0.3s, color 0.3s;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
-/* Remove tap highlight on mobile */
+/* ── Focus ring ── */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+/* ── No tap flash ── */
 * { -webkit-tap-highlight-color: transparent; }
 
-/* Focus ring */
-:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; border-radius: 8px; }
+/* ── Utility: muted text ── */
+.text-muted { color: var(--fg-2); }

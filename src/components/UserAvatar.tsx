@@ -1,10 +1,9 @@
 type Size = 'sm' | 'md' | 'lg' | 'xl'
-
 const sizeMap: Record<Size, string> = {
-  sm:  'w-8 h-8 text-xs',
-  md:  'w-10 h-10 text-sm',
-  lg:  'w-16 h-16 text-xl',
-  xl:  'w-20 h-20 text-2xl',
+  sm:  'w-7 h-7 text-[11px]',
+  md:  'w-9 h-9 text-[13px]',
+  lg:  'w-14 h-14 text-lg',
+  xl:  'w-16 h-16 text-xl',
 }
 
 export default function UserAvatar({ name, size = 'md' }: { name: string; size?: Size }) {
@@ -15,7 +14,7 @@ export default function UserAvatar({ name, size = 'md' }: { name: string; size?:
 
   return (
     <div
-      className={`${sizeMap[size]} avatar-initials rounded-full flex items-center justify-center font-bold flex-shrink-0 select-none font-display tracking-wide`}
+      className={`${sizeMap[size]} avatar-initials rounded-full flex items-center justify-center flex-shrink-0 select-none`}
       title={name}
       aria-label={`${name}'s avatar`}
     >
