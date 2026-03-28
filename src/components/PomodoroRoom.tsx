@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { TimerConfig } from '@/lib/types'
 import type { User } from '@supabase/supabase-js'
+import type { RoomState } from '@/app/room/[slug]/page'
 import Chat, { playFocusStart, playBreakStart, playSessionEnd } from './Chat'
 import UserAvatar from './UserAvatar'
 import StatsPopover from './StatsPopover'
@@ -19,13 +20,20 @@ function fmt(s: number): string {
 function notify(title: string, body: string) {
   if (typeof window === 'undefined') return
   if (Notification.permission === 'granted') new Notification(title, { body, silent: true })
-  else if (Notification.permission !== 'denied') Notification.requestPermission().then(p => { if (p === 'granted') new Notification(title, { body, silent: true }) })
 }
 
 export default function PomodoroRoom({
-  config, user, displayName, roomSlug, isSolo = false, onDone,
+  config, user, displayName, roomSlug, isSolo = false,
+  roomState, onBroadcast, onDone,
 }: {
-  config: TimerConfig; user: User; displayName: string; roomSlug: string; isSolo?: boolean; onDone: () => void
+  config: TimerConfig
+  user: User
+  displayName: string
+  roomSlug: string
+  isSolo?: boolean
+  roomState: RoomState | null
+  onBroadcast?: (state: RoomState | { phase: 'idle' }) => void
+  onDone: () => void
 }) {
   const [phase, setPhase] = useState<Phase>('focus')
   const [secondsLeft, setSecondsLeft] = useState(config.focusMinutes * 60)
@@ -34,15 +42,36 @@ export default function PomodoroRoom({
   const [breakSecs, setBreakSecs] = useState(0)
   const [showDone, setShowDone] = useState(false)
   const [showStats, setShowStats] = useState(false)
+  // For solo mode — own end time
   const endTimeRef = useRef<number>(Date.now() + config.focusMinutes * 60 * 1000)
   const phaseRef = useRef<Phase>('focus')
   const pausedRef = useRef<number>(config.focusMinutes * 60)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const prevPhaseRef = useRef<Phase | null>(null)
   const supabase = createClient()
   const isGuest = user.id === 'guest'
 
-  useEffect(() => { phaseRef.current = phase }, [phase])
+  // Sync display from roomState (shared timer)
+  useEffect(() => {
+    if (isSolo || !roomState) return
+    const rem = Math.max(0, Math.round((roomState.endTime - Date.now()) / 1000))
+    endTimeRef.current = roomState.endTime
 
+    // Play sound only on phase transition, not on every re-render
+    if (prevPhaseRef.current !== null && prevPhaseRef.current !== roomState.phase) {
+      if (roomState.phase === 'break') { playBreakStart(); notify('Break time', `Take a ${roomState.breakMinutes} min break.`) }
+      if (roomState.phase === 'focus') { playFocusStart() }
+    }
+    prevPhaseRef.current = roomState.phase as Phase
+
+    setPhase(roomState.phase as Phase)
+    phaseRef.current = roomState.phase as Phase
+    setSecondsLeft(rem)
+    setShowDone(false)
+    setRunning(true)
+  }, [roomState, isSolo])
+
+  // Tab title
   useEffect(() => {
     const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0')
     const ss = String(secondsLeft % 60).padStart(2, '0')
@@ -60,43 +89,7 @@ export default function PomodoroRoom({
     await supabase.rpc('upsert_daily_stats', { p_user_id: user.id, p_date: new Date().toISOString().split('T')[0], p_focus: f, p_break: b })
   }, [user])
 
-  const pushPhase = useCallback(async (p: string, durSecs: number) => {
-    if (isSolo) return
-    await supabase.from('room_sessions').upsert({
-      room_name: roomSlug, phase: p,
-      end_time: p === 'done' ? null : new Date(Date.now() + durSecs * 1000).toISOString(),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'room_name' })
-  }, [roomSlug, isSolo])
-
-  // Sync from DB on join
-  useEffect(() => {
-    if (isSolo) return
-    supabase.from('room_sessions').select('phase, end_time').eq('room_name', roomSlug).single()
-      .then(({ data }) => {
-        if (!data?.end_time) return
-        const serverEnd = new Date(data.end_time).getTime()
-        endTimeRef.current = serverEnd
-        setSecondsLeft(Math.max(0, Math.round((serverEnd - Date.now()) / 1000)))
-        setPhase(data.phase as Phase); phaseRef.current = data.phase as Phase
-      })
-
-    const ch = supabase.channel(`sess-sync-${roomSlug}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'room_sessions', filter: `room_name=eq.${roomSlug}` },
-        ({ new: row }) => {
-          const s = row as { phase: string; end_time: string | null }
-          if (!s.end_time) return
-          const serverEnd = new Date(s.end_time).getTime()
-          endTimeRef.current = serverEnd
-          setSecondsLeft(Math.max(0, Math.round((serverEnd - Date.now()) / 1000)))
-          if (s.phase === 'focus' || s.phase === 'break') {
-            setPhase(s.phase as Phase); phaseRef.current = s.phase as Phase
-            if (s.phase === 'break') { playBreakStart(); notify('Break time', `Take a ${config.breakMinutes} min break.`) }
-          }
-        }).subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [roomSlug, isSolo])
-
+  // Tick — drives both solo and shared (shared just reads endTimeRef which is kept in sync)
   useEffect(() => {
     if (!running || showDone) return
     function tick() {
@@ -106,23 +99,33 @@ export default function PomodoroRoom({
         clearInterval(intervalRef.current!)
         if (phaseRef.current === 'focus') {
           setFocusSecs(f => f + 1); saveStats(1, 0)
-          const dur = config.breakMinutes * 60
-          endTimeRef.current = Date.now() + dur * 1000
-          setPhase('break'); phaseRef.current = 'break'; setSecondsLeft(dur)
-          playBreakStart(); notify('Break time', `Take a ${config.breakMinutes} min break.`)
-          pushPhase('break', dur)
-          intervalRef.current = setInterval(tick, 500)
+          if (isSolo) {
+            // Solo: self-transition
+            const dur = config.breakMinutes * 60
+            endTimeRef.current = Date.now() + dur * 1000
+            setPhase('break'); phaseRef.current = 'break'; setSecondsLeft(dur)
+            playBreakStart(); notify('Break time', `Take a ${config.breakMinutes} min break.`)
+            intervalRef.current = setInterval(tick, 500)
+          } else {
+            // Shared: broadcast the break transition — everyone will sync via roomState
+            onBroadcast?.({
+              phase: 'break',
+              endTime: Date.now() + config.breakMinutes * 60 * 1000,
+              focusMinutes: config.focusMinutes,
+              breakMinutes: config.breakMinutes,
+            })
+          }
         } else {
           setBreakSecs(b => b + 1); saveStats(0, 1)
           setShowDone(true); setRunning(false)
           playSessionEnd(); notify('Session complete', 'Your pomodoro is done.')
-          pushPhase('done', 0)
+          if (!isSolo) onBroadcast?.({ phase: 'idle' })
         }
       }
     }
     intervalRef.current = setInterval(tick, 500)
     return () => clearInterval(intervalRef.current!)
-  }, [running, showDone])
+  }, [running, showDone, isSolo])
 
   function handlePauseResume() {
     if (running) {
@@ -135,19 +138,29 @@ export default function PomodoroRoom({
 
   function handleEnd() {
     clearInterval(intervalRef.current!); setRunning(false)
-    playSessionEnd(); setShowDone(true); pushPhase('done', 0)
+    playSessionEnd(); setShowDone(true)
+    if (!isSolo) onBroadcast?.({ phase: 'idle' })
   }
 
   function handleRepeat() {
-    setShowDone(false)
-    endTimeRef.current = Date.now() + config.focusMinutes * 60 * 1000
-    setPhase('focus'); phaseRef.current = 'focus'
-    setSecondsLeft(config.focusMinutes * 60); setRunning(true)
-    playFocusStart(); pushPhase('focus', config.focusMinutes * 60)
+    setShowDone(false); setRunning(true)
+    if (isSolo) {
+      endTimeRef.current = Date.now() + config.focusMinutes * 60 * 1000
+      setPhase('focus'); phaseRef.current = 'focus'
+      setSecondsLeft(config.focusMinutes * 60)
+      playFocusStart()
+    } else {
+      onBroadcast?.({
+        phase: 'focus',
+        endTime: Date.now() + config.focusMinutes * 60 * 1000,
+        focusMinutes: config.focusMinutes,
+        breakMinutes: config.breakMinutes,
+      })
+    }
   }
 
   const totalSecs = phase === 'focus' ? config.focusMinutes * 60 : config.breakMinutes * 60
-  const progress = ((totalSecs - secondsLeft) / totalSecs) * 100
+  const progress = Math.min(100, ((totalSecs - secondsLeft) / totalSecs) * 100)
   const C = 2 * Math.PI * 45
   const isFocus = phase === 'focus'
 
@@ -157,11 +170,10 @@ export default function PomodoroRoom({
       {/* Left */}
       <div className="flex-1 flex flex-col gap-4 min-w-0">
 
-        {/* Timer */}
+        {/* Timer card */}
         <div className="flex-1 glass rounded-card flex flex-col items-center justify-center gap-7 px-8"
           style={{ boxShadow: 'var(--shadow-md)' }}>
 
-          {/* Phase indicator */}
           <div className="flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${running ? 'animate-pulse' : ''}`}
               style={{ background: isFocus ? 'var(--accent)' : '#30D158' }} />
@@ -170,7 +182,6 @@ export default function PomodoroRoom({
             </span>
           </div>
 
-          {/* Ring */}
           <div className="relative w-52 h-52">
             <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
               <circle cx="50" cy="50" r="45" fill="none" stroke="var(--border)" strokeWidth="3.5" />
@@ -192,17 +203,15 @@ export default function PomodoroRoom({
             </div>
           </div>
 
-          {/* Controls */}
           {!showDone ? (
             <div className="flex items-center gap-3">
               <button onClick={handlePauseResume}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-pill text-sm font-semibold text-white transition-all active:scale-[0.97]"
                 style={{ background: 'var(--accent)' }}>
-                {running ? (
-                  <><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg>Pause</>
-                ) : (
-                  <><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Resume</>
-                )}
+                {running
+                  ? <><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg>Pause</>
+                  : <><svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Resume</>
+                }
               </button>
               <button onClick={handleEnd}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-pill text-sm font-semibold transition-all active:scale-[0.97]"
@@ -248,7 +257,7 @@ export default function PomodoroRoom({
               ))}
             </div>
           </div>
-          <button onClick={() => setShowStats(s => !s)} className="text-[11px] font-medium flex-shrink-0 transition-colors"
+          <button onClick={() => setShowStats(s => !s)} className="text-[11px] font-medium flex-shrink-0"
             style={{ color: 'var(--accent)' }}>
             {showStats ? 'Hide' : 'Stats'}
           </button>
