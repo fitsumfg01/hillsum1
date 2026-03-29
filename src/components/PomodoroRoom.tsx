@@ -63,7 +63,7 @@ export default function PomodoroRoom({
 
     // Phase transition sounds
     if (prevPhaseRef.current !== null && prevPhaseRef.current !== roomState.phase) {
-      if (roomState.phase === 'break') { playBreakStart(); notify('Break time', `Take a ${roomState.breakMinutes} min break.`) }
+      if (roomState.phase === 'break') { playBreakStart(); notify('Break time', 'Take a break.') }
       if (roomState.phase === 'focus') { playFocusStart() }
     }
     prevPhaseRef.current = roomState.phase as Phase
