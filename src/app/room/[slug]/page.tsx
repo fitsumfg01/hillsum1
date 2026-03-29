@@ -55,7 +55,7 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
       }
     }
     getUser()
-  }, [supabase])
+  }, [])
 
   const handleStartSession = (timerConfig: TimerConfig) => {
     setConfig(timerConfig)
