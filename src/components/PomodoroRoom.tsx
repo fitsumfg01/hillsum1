@@ -245,7 +245,15 @@ export default function PomodoroRoom({
             <span className={`w-2 h-2 rounded-full ${running ? 'animate-pulse' : ''}`}
               style={{ background: isFocus ? 'var(--accent)' : '#30D158' }} />
             <span className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--fg-2)' }}>
-              {isFocus ? 'Focus' : 'Break'}
+              {showDone ? 'Complete' : !running ? 'Paused' : isFocus ? 'Focusing' : 'On Break'}
+            </span>
+            <span className="text-[11px]" style={{ color: 'var(--fg-2)' }}>·</span>
+            <span className="text-[11px] tabular-nums" style={{ color: 'var(--fg-2)' }}>
+              {fmt(totalSecs - secondsLeft)} elapsed
+            </span>
+            <span className="text-[11px]" style={{ color: 'var(--fg-2)' }}>·</span>
+            <span className="text-[11px] tabular-nums" style={{ color: 'var(--fg-2)' }}>
+              {Math.round(progress)}%
             </span>
           </div>
 
