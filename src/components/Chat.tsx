@@ -56,66 +56,62 @@ export default function Chat({
   useEffect(() => {
     if (isSolo) return
 
-    let msgCh: any = null
-    let presCh: any = null
+    // Get room id, then load messages and subscribe
+    supabase.from('rooms').select('id').eq('name', roomSlug).single()
+      .then(({ data: room }) => {
+        if (!room) return
+        roomIdRef.current = room.id
+        const rid = room.id
 
-    const setupChat = async () => {
-      // Get room id
-      const { data: room } = await supabase.from('rooms').select('id').eq('name', roomSlug).single()
-      if (!room) return
-      
-      roomIdRef.current = room.id
-      const rid = room.id
+        // Load history — simple select, no join needed
+        supabase.from('room_messages')
+          .select('id, content, created_at, user_id, sender_name')
+          .eq('room_id', rid)
+          .order('created_at', { ascending: true })
+          .limit(200)
+          .then(({ data }) => { if (data) setMessages(data as Message[]) })
 
-      // Load history
-      const { data } = await supabase.from('room_messages')
-        .select('id, content, created_at, user_id, sender_name')
-        .eq('room_id', rid)
-        .order('created_at', { ascending: true })
-        .limit(200)
-      
-      if (data) setMessages(data as Message[])
+        // Realtime: new messages — payload has all fields, no extra fetch
+        const msgCh = supabase
+          .channel(`chat-${rid}`)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_id=eq.${rid}` },
+            ({ new: row }) => {
+              setMessages(prev => {
+                // Avoid duplicates (optimistic insert)
+                if (prev.some(m => m.id === row.id)) return prev
+                return [...prev, row as Message]
+              })
+            }
+          )
+          .subscribe()
 
-      // Realtime: new messages
-      msgCh = supabase.channel(`chat-${rid}`)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_id=eq.${rid}` },
-          ({ new: row }) => {
-            setMessages(prev => {
-              if (prev.some(m => m.id === row.id)) return prev
-              return [...prev, row as Message]
-            })
-          }
-        )
-        .subscribe()
+        // Presence for join notifications
+        const presCh = supabase
+          .channel(`chat-pres-${rid}`, { config: { presence: { key: myId } } })
+          .on('presence', { event: 'join' }, ({ newPresences }) => {
+            if (isFirstMount.current) return
+            const name = (newPresences as unknown as { name: string }[])[0]?.name
+            if (name && name !== displayName) {
+              playChime(880, 1046, 0.3)
+              setJoinNotice(`${name} joined`)
+              setTimeout(() => setJoinNotice(null), 3000)
+            }
+          })
+          .subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+              await presCh.track({ user_id: myId, name: displayName })
+              isFirstMount.current = false
+            }
+          })
 
-      // Presence for join notifications
-      presCh = supabase.channel(`chat-pres-${rid}`, { config: { presence: { key: myId } } })
-        .on('presence', { event: 'join' }, ({ newPresences }) => {
-          if (isFirstMount.current) return
-          const name = (newPresences as unknown as { name: string }[])[0]?.name
-          if (name && name !== displayName) {
-            playChime(880, 1046, 0.3)
-            setJoinNotice(`${name} joined`)
-            setTimeout(() => setJoinNotice(null), 3000)
-          }
-        })
-        .subscribe(async (status) => {
-          if (status === 'SUBSCRIBED') {
-            await presCh.track({ user_id: myId, name: displayName })
-            isFirstMount.current = false
-          }
-        })
-    }
-
-    setupChat()
-
-    return () => {
-      if (msgCh) supabase.removeChannel(msgCh)
-      if (presCh) supabase.removeChannel(presCh)
-    }
-  }, [roomSlug, isSolo, supabase, myId, displayName])
+        return () => {
+          supabase.removeChannel(msgCh)
+          supabase.removeChannel(presCh)
+        }
+      })
+  }, [roomSlug, isSolo])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

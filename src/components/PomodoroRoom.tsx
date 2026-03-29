@@ -63,7 +63,7 @@ export default function PomodoroRoom({
 
     // Phase transition sounds
     if (prevPhaseRef.current !== null && prevPhaseRef.current !== roomState.phase) {
-      if (roomState.phase === 'break') { playBreakStart(); notify('Break time', 'Take a break.') }
+      if (roomState.phase === 'break') { playBreakStart(); notify('Break time', `Take a ${roomState.breakMinutes} min break.`) }
       if (roomState.phase === 'focus') { playFocusStart() }
     }
     prevPhaseRef.current = roomState.phase as Phase
@@ -151,10 +151,6 @@ export default function PomodoroRoom({
             onBroadcast?.({
               phase: 'break',
               endTime: Date.now() + config.breakMinutes * 60 * 1000,
-              secondsLeft: config.breakMinutes * 60,
-              running: true,
-              user_id: user.id,
-              displayName,
               focusMinutes: config.focusMinutes,
               breakMinutes: config.breakMinutes,
             })
@@ -180,8 +176,6 @@ export default function PomodoroRoom({
       clearInterval(intervalRef.current!); setRunning(false)
       if (!isSolo) onBroadcast?.({
         phase, endTime: endTimeRef.current,
-        secondsLeft: remaining, running: false,
-        user_id: user.id, displayName,
         focusMinutes: config.focusMinutes, breakMinutes: config.breakMinutes,
         paused: true, pausedSecondsLeft: remaining,
       })
@@ -192,8 +186,6 @@ export default function PomodoroRoom({
       setRunning(true)
       if (!isSolo) onBroadcast?.({
         phase, endTime: newEnd,
-        secondsLeft: pausedRef.current, running: true,
-        user_id: user.id, displayName,
         focusMinutes: config.focusMinutes, breakMinutes: config.breakMinutes,
         paused: false,
       })
@@ -219,10 +211,6 @@ export default function PomodoroRoom({
       onBroadcast?.({
         phase: 'focus',
         endTime: Date.now() + config.focusMinutes * 60 * 1000,
-        secondsLeft: config.focusMinutes * 60,
-        running: true,
-        user_id: user.id,
-        displayName,
         focusMinutes: config.focusMinutes,
         breakMinutes: config.breakMinutes,
       })
@@ -245,15 +233,7 @@ export default function PomodoroRoom({
             <span className={`w-2 h-2 rounded-full ${running ? 'animate-pulse' : ''}`}
               style={{ background: isFocus ? 'var(--accent)' : '#30D158' }} />
             <span className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--fg-2)' }}>
-              {showDone ? 'Complete' : !running ? 'Paused' : isFocus ? 'Focusing' : 'On Break'}
-            </span>
-            <span className="text-[11px]" style={{ color: 'var(--fg-2)' }}>·</span>
-            <span className="text-[11px] tabular-nums" style={{ color: 'var(--fg-2)' }}>
-              {fmt(totalSecs - secondsLeft)} elapsed
-            </span>
-            <span className="text-[11px]" style={{ color: 'var(--fg-2)' }}>·</span>
-            <span className="text-[11px] tabular-nums" style={{ color: 'var(--fg-2)' }}>
-              {Math.round(progress)}%
+              {isFocus ? 'Focus' : 'Break'}
             </span>
           </div>
 

@@ -11,9 +11,10 @@ export default function Home() {
   const [loaded, setLoaded] = useState(false)
   const [checking, setChecking] = useState(true)
   const router = useRouter()
+  const supabase = createClient()
 
   useEffect(() => {
-    createClient().auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }) => {
       if (data.session) { router.replace('/lobby'); return }
       setChecking(false)
     })
