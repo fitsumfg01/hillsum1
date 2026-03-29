@@ -29,6 +29,7 @@ const PRESETS: { label: string; config: TimerConfig }[] = [
 
 export default function RoomPage({ params }: { params: { slug: string } }) {
   const router = useRouter()
+  const slug = params?.slug ?? ''
   const [user, setUser] = useState<User | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [config, setConfig] = useState<TimerConfig | null>(null)
@@ -67,7 +68,7 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
     setConfig(null)
   }
 
-  const isSolo = params.slug.startsWith('solo-')
+  const isSolo = slug.startsWith('solo-')
   const effectiveUser = user ?? { id: 'guest' } as any
 
   if (!displayName) return <div>Loading...</div>
@@ -78,7 +79,7 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
       <div className="flex-1 flex flex-col items-center justify-center">
         <div className="text-center mb-8">
           <p className="text-xs font-bold uppercase tracking-widest opacity-50 mb-2">
-            Room: {params.slug}
+            Room: {slug}
           </p>
           <p className="text-sm font-bold opacity-60">
             {isSolo ? 'Solo Focus' : 'Group Focus'} • {displayName}
@@ -148,7 +149,7 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
             config={config}
             user={effectiveUser}
             displayName={displayName}
-            roomSlug={params.slug}
+            roomSlug={slug}
             isSolo={isSolo}
             roomState={roomState}
             onBroadcast={(state) => setRoomState(state as RoomState | null)}
@@ -163,7 +164,7 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
           <Chat
             user={user}
             displayName={displayName}
-            roomSlug={params.slug}
+            roomSlug={slug}
             isSolo={isSolo}
             focusLocked={false}
           />
