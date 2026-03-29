@@ -7,10 +7,10 @@ export const dynamic = 'force-dynamic'
 
 export default function DashboardPage() {
   const router = useRouter()
-  const supabase = createClient()
   const [displayName, setDisplayName] = useState('')
 
   useEffect(() => {
+    const supabase = createClient()
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
@@ -25,7 +25,7 @@ export default function DashboardPage() {
       }
     }
     getUser()
-  }, [supabase])
+  }, [])
 
   const generateSoloRoomId = () => {
     return `solo-${Math.random().toString(36).substring(2, 11)}`
