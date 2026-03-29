@@ -56,14 +56,15 @@ export default function Chat({
   useEffect(() => {
     if (isSolo) return
 
-    // Get room id, then load messages and subscribe
+    let msgCh: ReturnType<typeof supabase.channel> | null = null
+    let presCh: ReturnType<typeof supabase.channel> | null = null
+
     supabase.from('rooms').select('id').eq('name', roomSlug).single()
       .then(({ data: room }) => {
         if (!room) return
         roomIdRef.current = room.id
         const rid = room.id
 
-        // Load history — simple select, no join needed
         supabase.from('room_messages')
           .select('id, content, created_at, user_id, sender_name')
           .eq('room_id', rid)
@@ -71,15 +72,13 @@ export default function Chat({
           .limit(200)
           .then(({ data }) => { if (data) setMessages(data as Message[]) })
 
-        // Realtime: new messages — payload has all fields, no extra fetch
-        const msgCh = supabase
+        msgCh = supabase
           .channel(`chat-${rid}`)
           .on(
             'postgres_changes',
             { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_id=eq.${rid}` },
             ({ new: row }) => {
               setMessages(prev => {
-                // Avoid duplicates (optimistic insert)
                 if (prev.some(m => m.id === row.id)) return prev
                 return [...prev, row as Message]
               })
@@ -87,8 +86,7 @@ export default function Chat({
           )
           .subscribe()
 
-        // Presence for join notifications
-        const presCh = supabase
+        presCh = supabase
           .channel(`chat-pres-${rid}`, { config: { presence: { key: myId } } })
           .on('presence', { event: 'join' }, ({ newPresences }) => {
             if (isFirstMount.current) return
@@ -101,16 +99,16 @@ export default function Chat({
           })
           .subscribe(async (status) => {
             if (status === 'SUBSCRIBED') {
-              await presCh.track({ user_id: myId, name: displayName })
+              await presCh!.track({ user_id: myId, name: displayName })
               isFirstMount.current = false
             }
           })
-
-        return () => {
-          supabase.removeChannel(msgCh)
-          supabase.removeChannel(presCh)
-        }
       })
+
+    return () => {
+      if (msgCh) supabase.removeChannel(msgCh)
+      if (presCh) supabase.removeChannel(presCh)
+    }
   }, [roomSlug, isSolo])
 
   useEffect(() => {

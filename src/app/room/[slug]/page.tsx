@@ -295,15 +295,25 @@ export default function RoomPage() {
 
         {/* Left: timer area */}
         <div className="flex-1 min-w-0">
-          {timerPhase === 'setup' && !isSolo ? (
+          {timerPhase === 'setup' ? (
             <PomodoroSetup onStart={(cfg) => {
-              const state: RoomState = {
-                phase: 'focus',
-                endTime: Date.now() + cfg.focusMinutes * 60 * 1000,
-                focusMinutes: cfg.focusMinutes,
-                breakMinutes: cfg.breakMinutes,
+              if (isSolo) {
+                setRoomState({
+                  phase: 'focus',
+                  endTime: Date.now() + cfg.focusMinutes * 60 * 1000,
+                  focusMinutes: cfg.focusMinutes,
+                  breakMinutes: cfg.breakMinutes,
+                })
+                setTimerPhase('running')
+              } else {
+                const state: RoomState = {
+                  phase: 'focus',
+                  endTime: Date.now() + cfg.focusMinutes * 60 * 1000,
+                  focusMinutes: cfg.focusMinutes,
+                  breakMinutes: cfg.breakMinutes,
+                }
+                broadcastState(state)
               }
-              broadcastState(state)
             }} />
           ) : (
             <PomodoroRoom

@@ -96,20 +96,35 @@ export default function PomodoroRoom({
   useEffect(() => {
     if (typeof window !== 'undefined' && Notification.permission === 'default') Notification.requestPermission()
     playFocusStart()
-    // Load all-time totals from DB
-    if (!isGuest) {
-      supabase.from('profiles').select('total_focus_seconds, total_break_seconds').eq('id', user.id).single()
-        .then(({ data }) => {
-          if (data) {
-            setTotalFocusSecs(data.total_focus_seconds ?? 0)
-            setTotalBreakSecs(data.total_break_seconds ?? 0)
-          }
-        })
+    if (isGuest) {
+      // Load guest stats from sessionStorage
+      const saved = JSON.parse(sessionStorage.getItem('guest_stats') ?? '{"focus":0,"break":0}')
+      setTotalFocusSecs(saved.focus)
+      setTotalBreakSecs(saved.break)
+      return
     }
+    // Load all-time totals from DB
+    supabase.from('profiles').select('total_focus_seconds, total_break_seconds').eq('id', user.id).single()
+      .then(({ data }) => {
+        if (data) {
+          setTotalFocusSecs(data.total_focus_seconds ?? 0)
+          setTotalBreakSecs(data.total_break_seconds ?? 0)
+        }
+      })
   }, [])
 
   const saveStats = useCallback(async (focusSeconds: number, breakSeconds: number) => {
-    if (isGuest) return
+    if (isGuest) {
+      // Guest: persist to sessionStorage only
+      const prev = JSON.parse(sessionStorage.getItem('guest_stats') ?? '{"focus":0,"break":0}')
+      sessionStorage.setItem('guest_stats', JSON.stringify({
+        focus: prev.focus + focusSeconds,
+        break: prev.break + breakSeconds,
+      }))
+      if (focusSeconds > 0) setTotalFocusSecs(t => t + focusSeconds)
+      if (breakSeconds > 0) setTotalBreakSecs(t => t + breakSeconds)
+      return
+    }
     const today = new Date().toISOString().split('T')[0]
     const { error } = await supabase.rpc('upsert_daily_stats', {
       p_user_id: user.id, p_date: today,
