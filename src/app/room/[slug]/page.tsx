@@ -90,6 +90,9 @@ export default function RoomPage() {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
+    if (typeof window !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
     const guestName = sessionStorage.getItem('guest_name')
     if (guestName) {
       setDisplayName(guestName)
@@ -225,6 +228,10 @@ export default function RoomPage() {
         } else {
           // Break over — back to setup
           broadcast({ phase: 'idle' })
+          // Browser notification
+          if (Notification.permission === 'granted') {
+            new Notification('Session complete', { body: 'Great work! Ready for another round?', silent: true })
+          }
         }
       }
     }
