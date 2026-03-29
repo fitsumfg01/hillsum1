@@ -323,14 +323,14 @@ export default function RoomPage() {
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
 
       {/* ── Header ── */}
-      <header className="glass sticky top-0 z-20 flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+      <header className="glass sticky top-0 z-20 flex items-center justify-between px-4 md:px-5 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
 
         {/* Left: avatar + stats */}
         <div className="relative">
           <button onClick={() => { setShowProfile(p => !p); setShowOnline(false) }}
             className="flex items-center gap-2.5 active:scale-95 transition-transform">
             <UserAvatar name={displayName} size="sm" />
-            <span className="text-[13px] font-medium" style={{ color: 'var(--fg)' }}>{displayName}</span>
+            <span className="text-[13px] font-medium hidden sm:block" style={{ color: 'var(--fg)' }}>{displayName}</span>
           </button>
           {showProfile && (
             <div className="absolute top-full left-0 mt-2 w-64 glass rounded-[16px] p-5 z-30"
@@ -401,9 +401,14 @@ export default function RoomPage() {
       </header>
 
       {/* ── Main ── */}
-      <div className="flex-1 flex gap-5 p-4 pt-6 max-w-5xl mx-auto w-full">
+      <div className="flex-1 flex flex-col-reverse md:flex-row gap-4 p-4 pt-5 max-w-5xl mx-auto w-full">
 
-        {/* Timer */}
+        {/* Chat — bottom on mobile, right on desktop */}
+        <div className="w-full md:w-[300px] md:flex-shrink-0 h-[40vh] md:h-[calc(100vh-72px)]">
+          <Chat user={user} displayName={displayName} roomSlug={slug} isSolo={false} focusLocked={chatLocked} />
+        </div>
+
+        {/* Timer — top on mobile, left on desktop */}
         <div className="flex-1 min-w-0 flex items-start justify-center">
           {timerPhase === 'setup' ? (
             <PomodoroSetup onStart={handleStart} />
@@ -421,7 +426,7 @@ export default function RoomPage() {
               </div>
 
               {/* Ring */}
-              <div className="relative w-52 h-52">
+              <div className="relative w-44 h-44 md:w-52 md:h-52">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="45" fill="none" stroke="var(--border)" strokeWidth="3.5" />
                   <circle cx="50" cy="50" r="45" fill="none"
@@ -472,10 +477,6 @@ export default function RoomPage() {
           )}
         </div>
 
-        {/* Chat */}
-        <div className="w-[300px] flex-shrink-0 h-[calc(100vh-72px)]">
-          <Chat user={user} displayName={displayName} roomSlug={slug} isSolo={false} focusLocked={chatLocked} />
-        </div>
       </div>
     </div>
   )

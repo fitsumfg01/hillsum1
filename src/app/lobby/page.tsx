@@ -99,16 +99,16 @@ export default function LobbyPage() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
-      <header className="glass sticky top-0 z-10 flex items-center justify-between px-8 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+      <header className="glass sticky top-0 z-10 flex items-center justify-between px-4 md:px-8 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <span className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--fg)', letterSpacing: '-0.02em' }}>hillsum</span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
           <UserAvatar name={displayName} size="sm" />
-          <span className="text-sm font-medium" style={{ color: 'var(--fg-2)' }}>{displayName}</span>
+          <span className="text-sm font-medium hidden sm:block" style={{ color: 'var(--fg-2)' }}>{displayName}</span>
           <ThemeToggle />
         </div>
       </header>
 
-      <main className="flex-1 flex items-center justify-center p-6">
+      <main className="flex-1 flex items-center justify-center p-4 md:p-6">
         <div className="w-full max-w-[400px] flex flex-col gap-4">
 
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
