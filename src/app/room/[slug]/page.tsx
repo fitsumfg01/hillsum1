@@ -145,7 +145,7 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
             roomSlug={params.slug}
             isSolo={isSolo}
             roomState={roomState}
-            onBroadcast={setRoomState}
+            onBroadcast={(state) => setRoomState(state as RoomState | null)}
             onDone={handleDone}
           />
         ) : null}
