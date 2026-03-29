@@ -16,6 +16,8 @@ export type RoomState = {
   endTime: number
   paused?: boolean
   pausedSecondsLeft?: number
+  focusMinutes?: number
+  breakMinutes?: number
 }
 
 const PRESETS: { label: string; config: TimerConfig }[] = [
