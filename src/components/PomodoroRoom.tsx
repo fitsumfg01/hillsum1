@@ -180,6 +180,8 @@ export default function PomodoroRoom({
       clearInterval(intervalRef.current!); setRunning(false)
       if (!isSolo) onBroadcast?.({
         phase, endTime: endTimeRef.current,
+        secondsLeft: remaining, running: false,
+        user_id: user.id, displayName,
         focusMinutes: config.focusMinutes, breakMinutes: config.breakMinutes,
         paused: true, pausedSecondsLeft: remaining,
       })
@@ -190,6 +192,8 @@ export default function PomodoroRoom({
       setRunning(true)
       if (!isSolo) onBroadcast?.({
         phase, endTime: newEnd,
+        secondsLeft: pausedRef.current, running: true,
+        user_id: user.id, displayName,
         focusMinutes: config.focusMinutes, breakMinutes: config.breakMinutes,
         paused: false,
       })
