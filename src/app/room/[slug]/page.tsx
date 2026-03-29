@@ -1,341 +1,168 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import PomodoroSetup from '@/components/PomodoroSetup'
+import type { User } from '@supabase/supabase-js'
 import PomodoroRoom from '@/components/PomodoroRoom'
 import Chat from '@/components/Chat'
-import ThemeToggle from '@/components/ThemeToggle'
-import UserAvatar from '@/components/UserAvatar'
-import type { User } from '@supabase/supabase-js'
 import type { TimerConfig } from '@/lib/types'
 
-export const dynamic = 'force-dynamic'
-export type { TimerConfig }
-
 export type RoomState = {
-  phase: 'focus' | 'break' | 'idle'
-  endTime: number       // wall-clock ms when phase expires (adjusted on resume)
-  focusMinutes: number
-  breakMinutes: number
-  paused?: boolean
-  pausedSecondsLeft?: number  // remaining seconds at time of pause
+  phase: 'focus' | 'break'
+  secondsLeft: number
+  running: boolean
+  user_id: string
+  displayName: string
 }
 
-export default function RoomPage() {
-  const { slug } = useParams<{ slug: string }>()
-  const [user, setUser] = useState<User | null>(null)
-  const [displayName, setDisplayName] = useState('')
-  const [roomExists, setRoomExists] = useState<boolean | null>(null)
-  const [roomState, setRoomState] = useState<RoomState | null>(null)
-  // 'setup' = choosing time, 'running' = timer active
-  const [timerPhase, setTimerPhase] = useState<'setup' | 'running'>('setup')
-  const [onlineUsers, setOnlineUsers] = useState<{ name: string; user_id: string }[]>([])
-  const [showProfilePanel, setShowProfilePanel] = useState(false)
-  const [showOnlinePanel, setShowOnlinePanel] = useState(false)
-  const [allTimeFocus, setAllTimeFocus] = useState(0)
-  const [allTimeBreak, setAllTimeBreak] = useState(0)
-  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
+const PRESETS: { label: string; config: TimerConfig }[] = [
+  { label: '25 min', config: { focusMinutes: 25, breakMinutes: 5 } },
+  { label: '50 min', config: { focusMinutes: 50, breakMinutes: 10 } },
+  { label: '55 min', config: { focusMinutes: 55, breakMinutes: 5 } },
+  { label: '1 hour', config: { focusMinutes: 60, breakMinutes: 15 } },
+]
+
+export default function RoomPage({ params }: { params: { slug: string } }) {
   const router = useRouter()
   const supabase = createClient()
-  const isSolo = slug.startsWith('solo-')
+  const [user, setUser] = useState<User | null>(null)
+  const [displayName, setDisplayName] = useState('')
+  const [config, setConfig] = useState<TimerConfig | null>(null)
+  const [showSetup, setShowSetup] = useState(true)
+  const [customFocus, setCustomFocus] = useState(25)
+  const [customBreak, setCustomBreak] = useState(5)
+  const [showCustom, setShowCustom] = useState(false)
+  const [roomState, setRoomState] = useState<RoomState | null>(null)
 
   useEffect(() => {
-    const guestName = sessionStorage.getItem('guest_name')
-    if (guestName) {
-      setDisplayName(guestName)
-      setUser({ id: 'guest', user_metadata: {} } as unknown as User)
-      setRoomExists(true)
-      return
-    }
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) {
-        if (!isSolo) sessionStorage.setItem('intended_room', slug)
-        router.replace('/')
-        return
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('id', user.id)
+          .single()
+        setDisplayName(data?.display_name || user.email || 'User')
+      } else {
+        setDisplayName('Guest')
       }
-      setUser(data.user)
-      setDisplayName(
-        data.user.user_metadata?.preferred_name
-        ?? data.user.user_metadata?.full_name
-        ?? data.user.email?.split('@')[0] ?? 'User'
-      )
-    })
-    if (isSolo) { setRoomExists(true); return }
-    supabase.from('rooms').select('name').eq('name', slug).single()
-      .then(({ data }) => setRoomExists(!!data))
-  }, [slug])
-
-  // Load all-time stats for profile panel
-  useEffect(() => {
-    if (!user || user.id === 'guest') return
-    supabase.from('profiles').select('total_focus_seconds, total_break_seconds').eq('id', user.id).single()
-      .then(({ data }) => {
-        if (data) { setAllTimeFocus(data.total_focus_seconds ?? 0); setAllTimeBreak(data.total_break_seconds ?? 0) }
-      })
-  }, [user])
-
-  // Broadcast channel — set up as soon as we know the room exists
-  useEffect(() => {
-    if (isSolo || roomExists !== true) return
-
-    const channel = supabase.channel(`room:${slug}`, {
-      config: {
-        broadcast: { self: true },
-        presence: { key: user?.id ?? 'anon' },
-      },
-    })
-
-    channel
-      // Presence: who's in the room
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState<{ name: string; user_id: string }>()
-        const users = Object.values(state).flat()
-        setOnlineUsers(users)
-      })
-      // Timer state pushed by any member
-      .on('broadcast', { event: 'timer' }, ({ payload }: { payload: RoomState | { phase: 'idle' } }) => {
-        if (payload.phase === 'idle') {
-          setRoomState(null)
-          setTimerPhase('setup')
-        } else {
-          setRoomState(payload as RoomState)
-          setTimerPhase('running')
-        }
-      })
-      // New joiner requests current state — existing members respond
-      .on('broadcast', { event: 'request-sync' }, () => {
-        // Only respond if we have state (avoid everyone responding)
-        setRoomState(prev => {
-          if (prev) {
-            channel.send({ type: 'broadcast', event: 'timer', payload: prev })
-          }
-          return prev
-        })
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          // Track presence
-          await channel.track({
-            user_id: user?.id ?? 'guest',
-            name: displayName,
-            online_at: new Date().toISOString(),
-          })
-
-          // Ask existing members for current state (faster than DB)
-          await channel.send({ type: 'broadcast', event: 'request-sync', payload: {} })
-
-          // Also fall back to DB for late joiners (in case room is empty)
-          supabase.from('room_sessions').select('*').eq('room_name', slug).single()
-            .then(({ data }) => {
-              if (data && data.end_time && data.phase !== 'idle') {
-                setRoomState(prev => {
-                  if (prev) return prev
-                  const state: RoomState = {
-                    phase: data.phase as 'focus' | 'break',
-                    endTime: new Date(data.end_time).getTime(),
-                    focusMinutes: data.focus_minutes,
-                    breakMinutes: data.break_minutes,
-                    paused: data.paused ?? false,
-                    pausedSecondsLeft: data.paused_seconds_left ?? undefined,
-                  }
-                  setTimerPhase('running')
-                  return state
-                })
-              }
-            })
-        }
-      })
-
-    channelRef.current = channel
-    return () => { supabase.removeChannel(channel) }
-  }, [slug, roomExists, isSolo, user, displayName])
-
-  async function broadcastState(state: RoomState | { phase: 'idle' }) {
-    await channelRef.current?.send({ type: 'broadcast', event: 'timer', payload: state })
-    if (state.phase === 'idle') {
-      await supabase.from('room_sessions').upsert(
-        { room_name: slug, phase: 'idle', end_time: null, paused: false, updated_at: new Date().toISOString() },
-        { onConflict: 'room_name' }
-      )
-    } else {
-      const s = state as RoomState
-      await supabase.from('room_sessions').upsert({
-        room_name: slug, phase: s.phase,
-        focus_minutes: s.focusMinutes, break_minutes: s.breakMinutes,
-        end_time: new Date(s.endTime).toISOString(),
-        paused: s.paused ?? false,
-        paused_seconds_left: s.pausedSecondsLeft ?? null,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'room_name' })
     }
+    getUser()
+  }, [supabase])
+
+  const handleStartSession = (timerConfig: TimerConfig) => {
+    setConfig(timerConfig)
+    setShowSetup(false)
   }
 
-  if (!user || roomExists === null) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
-      <div className="w-7 h-7 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
-    </div>
-  )
-
-  if (!roomExists) return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: 'var(--bg)' }}>
-      <p className="text-[17px] font-semibold" style={{ color: 'var(--fg)' }}>Room not found</p>
-      <button onClick={() => router.push('/lobby')} className="text-sm" style={{ color: 'var(--accent)' }}>Back to lobby</button>
-    </div>
-  )
-
-  // Chat locked only when actively running in focus (not paused, not break, not setup)
-  const chatLocked = !isSolo
-    && timerPhase === 'running'
-    && roomState?.phase === 'focus'
-    && !roomState?.paused
-
-  function fmtSecs(s: number) {
-    if (s < 60) return `${s}s`
-    if (s < 3600) return `${Math.floor(s / 60)}m`
-    if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
-    return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
+  const handleDone = () => {
+    setShowSetup(true)
+    setConfig(null)
   }
+
+  const isSolo = params.slug.startsWith('solo-')
+
+  if (!user && !displayName) return <div>Loading...</div>
+
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
-      <header className="glass sticky top-0 z-20 flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+    <div className="flex h-screen gap-4 p-4 bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 text-white">
+      {/* Left: Timer & Setup */}
+      <div className="flex-1 flex flex-col items-center justify-center">
+        <div className="text-center mb-8">
+          <p className="text-xs font-bold uppercase tracking-widest opacity-50 mb-2">
+            Room: {params.slug}
+          </p>
+          <p className="text-sm font-bold opacity-60">
+            {isSolo ? 'Solo Focus' : 'Group Focus'} • {displayName}
+          </p>
+        </div>
 
-        {/* Left: profile avatar → stats panel */}
-        <div className="flex items-center gap-3 relative">
-          <button
-            onClick={() => { setShowProfilePanel(p => !p); setShowOnlinePanel(false) }}
-            className="flex items-center gap-2.5 active:scale-95 transition-transform"
-          >
-            <UserAvatar name={displayName} size="sm" />
-            <span className="text-[13px] font-medium" style={{ color: 'var(--fg)' }}>{displayName}</span>
-          </button>
+        {showSetup ? (
+          <div className="w-full max-w-md bg-white/5 backdrop-blur-md rounded-3xl p-8 border border-white/10 space-y-6">
+            <h2 className="text-2xl font-black text-center">Start a Session</h2>
 
-          {showProfilePanel && (
-            <div className="absolute top-full left-0 mt-2 w-64 glass rounded-[16px] p-5 z-30"
-              style={{ boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)' }}>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[13px] font-semibold" style={{ color: 'var(--fg)' }}>Your Stats</span>
-                <button onClick={() => setShowProfilePanel(false)} style={{ color: 'var(--fg-2)' }}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            {showCustom ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold uppercase opacity-50 block mb-2">
+                    Focus (min)
+                  </label>
+                  <input
+                    type="number"
+                    value={customFocus}
+                    onChange={(e) => setCustomFocus(Math.max(1, Number(e.target.value)))}
+                    className="w-full bg-white/10 border-b-2 border-white/30 p-2 outline-none focus:border-white text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase opacity-50 block mb-2">
+                    Break (min)
+                  </label>
+                  <input
+                    type="number"
+                    value={customBreak}
+                    onChange={(e) => setCustomBreak(Math.max(1, Number(e.target.value)))}
+                    className="w-full bg-white/10 border-b-2 border-white/30 p-2 outline-none focus:border-white text-white"
+                  />
+                </div>
+                <button
+                  onClick={() =>
+                    handleStartSession({ focusMinutes: customFocus, breakMinutes: customBreak })
+                  }
+                  className="w-full bg-white text-blue-600 font-black rounded-xl py-3 hover:bg-blue-50 transition-colors"
+                >
+                  Start Session
                 </button>
               </div>
-              <div className="flex gap-3 mb-2">
-                {[{ label: 'Focus', val: allTimeFocus }, { label: 'Break', val: allTimeBreak }].map(({ label, val }) => (
-                  <div key={label} className="flex flex-col flex-1 p-3 rounded-xl" style={{ background: 'var(--bg)' }}>
-                    <span className="text-[9px] uppercase tracking-widest mb-1" style={{ color: 'var(--fg-2)' }}>{label}</span>
-                    <span className="text-[18px] font-semibold tabular-nums" style={{ color: 'var(--fg)', letterSpacing: '-0.02em' }}>{fmtSecs(val)}</span>
-                  </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    onClick={() => handleStartSession(preset.config)}
+                    className="p-3 rounded-xl bg-white/10 border border-transparent hover:border-white/20 hover:bg-white/20 transition-all text-sm font-bold"
+                  >
+                    {preset.label}
+                  </button>
                 ))}
               </div>
-              {user?.id === 'guest' && (
-                <p className="text-[11px] text-center mt-2" style={{ color: 'var(--fg-2)' }}>Sign in to save your stats</p>
-              )}
-            </div>
-          )}
-        </div>
+            )}
 
-        {/* Center: room name */}
-        <div className="flex items-center gap-2">
-          <button onClick={() => router.push('/lobby')} style={{ color: 'var(--fg-2)' }} aria-label="Back">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <span className="text-[15px] font-semibold tracking-tight" style={{ color: 'var(--fg)', letterSpacing: '-0.02em' }}>hillsum</span>
-          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--bg)', color: 'var(--fg-2)' }}>
-            {isSolo ? 'Solo' : `#${slug}`}
-          </span>
-        </div>
-
-        {/* Right: online count → user list, theme toggle */}
-        <div className="flex items-center gap-3 relative">
-          {!isSolo && (
             <button
-              onClick={() => { setShowOnlinePanel(p => !p); setShowProfilePanel(false) }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all active:scale-95"
-              style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+              onClick={() => setShowCustom(!showCustom)}
+              className="w-full text-xs font-bold uppercase tracking-wider opacity-60 hover:opacity-100 transition-opacity py-2"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-[12px] font-medium" style={{ color: 'var(--fg-2)' }}>
-                {onlineUsers.length} online
-              </span>
+              {showCustom ? '← Back' : 'Custom Time →'}
             </button>
-          )}
+          </div>
+        ) : config ? (
+          <PomodoroRoom
+            config={config}
+            user={user!}
+            displayName={displayName}
+            roomSlug={params.slug}
+            isSolo={isSolo}
+            roomState={roomState}
+            onBroadcast={setRoomState}
+            onDone={handleDone}
+          />
+        ) : null}
+      </div>
 
-          {showOnlinePanel && (
-            <div className="absolute top-full right-0 mt-2 w-56 glass rounded-[16px] p-4 z-30"
-              style={{ boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)' }}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: 'var(--fg-2)' }}>In this room</span>
-                <button onClick={() => setShowOnlinePanel(false)} style={{ color: 'var(--fg-2)' }}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-              </div>
-              <div className="flex flex-col gap-2.5">
-                {onlineUsers.length === 0
-                  ? <p className="text-[12px]" style={{ color: 'var(--fg-2)' }}>Just you so far</p>
-                  : onlineUsers.map((u, i) => (
-                    <div key={i} className="flex items-center gap-2.5">
-                      <UserAvatar name={u.name} size="sm" />
-                      <span className="text-[13px] font-medium truncate flex-1" style={{ color: 'var(--fg)' }}>{u.name}</span>
-                      {u.name === displayName && <span className="text-[10px]" style={{ color: 'var(--fg-2)' }}>you</span>}
-                    </div>
-                  ))
-                }
-              </div>
-            </div>
-          )}
-
-          <ThemeToggle />
-        </div>
-      </header>
-
-      {/* Main layout: timer left, chat right — chat always present */}
-      <div className="flex-1 flex gap-5 p-4 pt-6 max-w-5xl mx-auto w-full">
-
-        {/* Left: timer area */}
-        <div className="flex-1 min-w-0">
-          {timerPhase === 'setup' && !isSolo ? (
-            <PomodoroSetup onStart={(cfg) => {
-              const state: RoomState = {
-                phase: 'focus',
-                endTime: Date.now() + cfg.focusMinutes * 60 * 1000,
-                focusMinutes: cfg.focusMinutes,
-                breakMinutes: cfg.breakMinutes,
-              }
-              broadcastState(state)
-            }} />
-          ) : (
-            <PomodoroRoom
-              roomState={isSolo ? null : roomState}
-              config={roomState
-                ? { focusMinutes: roomState.focusMinutes, breakMinutes: roomState.breakMinutes }
-                : { focusMinutes: 25, breakMinutes: 5 }}
-              user={user}
-              displayName={displayName}
-              roomSlug={slug}
-              isSolo={isSolo}
-              onBroadcast={isSolo ? undefined : broadcastState}
-              onTimerPhaseChange={setTimerPhase}
-              onDone={() => {
-                if (!isSolo) broadcastState({ phase: 'idle' })
-                setTimerPhase('setup')
-              }}
-            />
-          )}
-        </div>
-
-        {/* Right: chat — always visible for logged-in users in a room */}
-        <div className="w-[300px] flex-shrink-0 h-[calc(100vh-72px)]">
+      {/* Right: Chat */}
+      {user && config && (
+        <div className="w-80 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 flex flex-col overflow-hidden">
           <Chat
             user={user}
             displayName={displayName}
-            roomSlug={slug}
+            roomSlug={params.slug}
             isSolo={isSolo}
-            focusLocked={chatLocked}
+            focusLocked={false}
           />
         </div>
-      </div>
+      )}
     </div>
   )
 }
