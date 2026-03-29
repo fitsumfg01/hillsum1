@@ -68,8 +68,9 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
   }
 
   const isSolo = params.slug.startsWith('solo-')
+  const effectiveUser = user ?? { id: 'guest' } as any
 
-  if (!user && !displayName) return <div>Loading...</div>
+  if (!displayName) return <div>Loading...</div>
 
   return (
     <div className="flex h-screen gap-4 p-4 bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 text-white">
@@ -145,7 +146,7 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
         ) : config ? (
           <PomodoroRoom
             config={config}
-            user={user!}
+            user={effectiveUser}
             displayName={displayName}
             roomSlug={params.slug}
             isSolo={isSolo}
