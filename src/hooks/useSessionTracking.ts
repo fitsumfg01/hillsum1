@@ -14,7 +14,6 @@ export function useSessionTracking(
       secondsLeft === 0 &&
       !running &&
       phase !== undefined &&
-      phase !== 'idle' &&
       isGuest
     ) {
       guestStatsStore.incrementSessions()
