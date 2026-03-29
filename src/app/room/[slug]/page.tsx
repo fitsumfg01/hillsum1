@@ -13,6 +13,9 @@ export type RoomState = {
   running: boolean
   user_id: string
   displayName: string
+  endTime: number
+  paused?: boolean
+  pausedSecondsLeft?: number
 }
 
 const PRESETS: { label: string; config: TimerConfig }[] = [
