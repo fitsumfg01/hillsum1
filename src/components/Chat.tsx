@@ -48,7 +48,6 @@ export default function Chat({
   const [joinNotice, setJoinNotice] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const supabase = createClient()
   const myId = user.id
   const roomIdRef = useRef<string | null>(null)
   const isFirstMount = useRef(true)
@@ -56,59 +55,31 @@ export default function Chat({
   useEffect(() => {
     if (isSolo) return
 
-    let msgCh: ReturnType<typeof supabase.channel> | null = null
-    let presCh: ReturnType<typeof supabase.channel> | null = null
+    const supabase = createClient()
+    let historyLoaded = false
 
-    supabase.from('rooms').select('id').eq('name', roomSlug).single()
-      .then(({ data: room }) => {
+    // Use broadcast channel — works for guests too (no RLS restriction)
+    const ch = supabase.channel(`chat:${roomSlug}`, { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'message' }, ({ payload }: { payload: Message }) => {
+        setMessages(prev => prev.some(m => m.id === payload.id) ? prev : [...prev, payload])
+      })
+      .subscribe(async (status) => {
+        if (status !== 'SUBSCRIBED' || historyLoaded) return
+        historyLoaded = true
+
+        // Load history via rooms table (guests can read)
+        const { data: room } = await supabase.from('rooms').select('id').eq('name', roomSlug).single()
         if (!room) return
         roomIdRef.current = room.id
-        const rid = room.id
-
-        supabase.from('room_messages')
+        const { data } = await supabase.from('room_messages')
           .select('id, content, created_at, user_id, sender_name')
-          .eq('room_id', rid)
+          .eq('room_id', room.id)
           .order('created_at', { ascending: true })
           .limit(200)
-          .then(({ data }) => { if (data) setMessages(data as Message[]) })
-
-        msgCh = supabase
-          .channel(`chat-${rid}`)
-          .on(
-            'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_id=eq.${rid}` },
-            ({ new: row }) => {
-              setMessages(prev => {
-                if (prev.some(m => m.id === row.id)) return prev
-                return [...prev, row as Message]
-              })
-            }
-          )
-          .subscribe()
-
-        presCh = supabase
-          .channel(`chat-pres-${rid}`, { config: { presence: { key: myId } } })
-          .on('presence', { event: 'join' }, ({ newPresences }) => {
-            if (isFirstMount.current) return
-            const name = (newPresences as unknown as { name: string }[])[0]?.name
-            if (name && name !== displayName) {
-              playChime(880, 1046, 0.3)
-              setJoinNotice(`${name} joined`)
-              setTimeout(() => setJoinNotice(null), 3000)
-            }
-          })
-          .subscribe(async (status) => {
-            if (status === 'SUBSCRIBED') {
-              await presCh!.track({ user_id: myId, name: displayName })
-              isFirstMount.current = false
-            }
-          })
+        if (data) setMessages(data as Message[])
       })
 
-    return () => {
-      if (msgCh) supabase.removeChannel(msgCh)
-      if (presCh) supabase.removeChannel(presCh)
-    }
+    return () => { supabase.removeChannel(ch) }
   }, [roomSlug, isSolo])
 
   useEffect(() => {
@@ -130,22 +101,38 @@ export default function Chat({
       return
     }
 
-    // Ensure we have room id
-    if (!roomIdRef.current) {
-      const { data: room } = await supabase.from('rooms').select('id').eq('name', roomSlug).single()
-      if (!room) return
-      roomIdRef.current = room.id
+    const msg: Message = {
+      id: crypto.randomUUID(),
+      content,
+      created_at: new Date().toISOString(),
+      user_id: myId,
+      sender_name: displayName,
     }
 
-    // Insert with sender_name — no profile lookup needed
-    const { error } = await supabase.from('room_messages').insert({
-      content,
-      user_id: myId,
-      room_id: roomIdRef.current,
-      sender_name: displayName,
+    // Optimistic local add
+    setMessages(prev => [...prev, msg])
+
+    // Broadcast to all clients (works for guests — no auth required)
+    const supabase = createClient()
+    await supabase.channel(`chat:${roomSlug}`).send({
+      type: 'broadcast', event: 'message', payload: msg,
     })
 
-    if (!error) inputRef.current?.focus()
+    // Persist to DB (skip for guests — no valid user_id for RLS)
+    if (myId !== 'guest') {
+      if (!roomIdRef.current) {
+        const { data: room } = await supabase.from('rooms').select('id').eq('name', roomSlug).single()
+        if (room) roomIdRef.current = room.id
+      }
+      if (roomIdRef.current) {
+        await supabase.from('room_messages').insert({
+          id: msg.id, content, user_id: myId,
+          room_id: roomIdRef.current, sender_name: displayName,
+        })
+      }
+    }
+
+    inputRef.current?.focus()
   }
 
   const grouped = messages.map((m, i) => ({
