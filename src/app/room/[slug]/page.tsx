@@ -1,10 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import PomodoroRoom from '@/components/PomodoroRoom'
 import Chat from '@/components/Chat'
+import ThemeToggle from '@/components/ThemeToggle'
 import type { TimerConfig } from '@/lib/types'
 
 export type RoomState = {
@@ -28,7 +28,6 @@ const PRESETS: { label: string; config: TimerConfig }[] = [
 ]
 
 export default function RoomPage({ params }: { params: { slug: string } }) {
-  const router = useRouter()
   const slug = params?.slug ?? ''
   const [user, setUser] = useState<User | null>(null)
   const [displayName, setDisplayName] = useState('')
@@ -41,135 +40,136 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
 
   useEffect(() => {
     const supabase = createClient()
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       setUser(user)
       if (user) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('display_name')
-          .eq('id', user.id)
-          .single()
+        const { data } = await supabase.from('profiles').select('display_name').eq('id', user.id).single()
         setDisplayName(data?.display_name || user.email || 'User')
       } else {
         setDisplayName('Guest')
       }
-    }
-    getUser()
+    })
   }, [])
-
-  const handleStartSession = (timerConfig: TimerConfig) => {
-    setConfig(timerConfig)
-    setShowSetup(false)
-  }
-
-  const handleDone = () => {
-    setShowSetup(true)
-    setConfig(null)
-  }
 
   const isSolo = slug.startsWith('solo-')
   const effectiveUser = user ?? { id: 'guest' } as any
 
-  if (!displayName) return <div>Loading...</div>
+  if (!displayName) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+      <div className="w-7 h-7 rounded-full border-2 border-t-transparent animate-spin"
+        style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+    </div>
+  )
 
   return (
-    <div className="flex h-screen gap-4 p-4 bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 text-white">
-      {/* Left: Timer & Setup */}
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <div className="text-center mb-8">
-          <p className="text-xs font-bold uppercase tracking-widest opacity-50 mb-2">
-            Room: {slug}
-          </p>
-          <p className="text-sm font-bold opacity-60">
-            {isSolo ? 'Solo Focus' : 'Group Focus'} • {displayName}
-          </p>
+    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
+      {/* Header */}
+      <header className="glass sticky top-0 z-10 flex items-center justify-between px-8 py-4 border-b"
+        style={{ borderColor: 'var(--border)' }}>
+        <div className="flex items-center gap-3">
+          <span className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--fg)', letterSpacing: '-0.02em' }}>
+            hillsum
+          </span>
+          <span className="text-[13px]" style={{ color: 'var(--fg-2)' }}>
+            {isSolo ? '· Solo' : `· #${slug}`}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm" style={{ color: 'var(--fg-2)' }}>{displayName}</span>
+          <ThemeToggle />
+        </div>
+      </header>
+
+      {/* Body */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Timer area */}
+        <div className="flex-1 flex items-center justify-center p-8">
+          {showSetup ? (
+            <div className="w-full max-w-sm flex flex-col gap-4">
+              <div className="mb-2">
+                <h2 className="text-[28px] font-semibold tracking-tight"
+                  style={{ color: 'var(--fg)', letterSpacing: '-0.03em' }}>
+                  {isSolo ? 'Solo Session' : 'Group Session'}
+                </h2>
+                <p className="text-sm mt-1" style={{ color: 'var(--fg-2)' }}>
+                  {isSolo ? 'A private session just for you.' : `Room: ${slug}`}
+                </p>
+              </div>
+
+              <div className="glass rounded-card p-6 flex flex-col gap-3" style={{ boxShadow: 'var(--shadow-md)' }}>
+                {showCustom ? (
+                  <>
+                    <div>
+                      <label className="text-[11px] font-semibold uppercase tracking-widest block mb-2"
+                        style={{ color: 'var(--fg-2)' }}>Focus (min)</label>
+                      <input type="number" value={customFocus}
+                        onChange={e => setCustomFocus(Math.max(1, Number(e.target.value)))}
+                        className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                        style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--fg)' }} />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold uppercase tracking-widest block mb-2"
+                        style={{ color: 'var(--fg-2)' }}>Break (min)</label>
+                      <input type="number" value={customBreak}
+                        onChange={e => setCustomBreak(Math.max(1, Number(e.target.value)))}
+                        className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                        style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--fg)' }} />
+                    </div>
+                    <button onClick={() => setConfig({ focusMinutes: customFocus, breakMinutes: customBreak }) || setShowSetup(false)}
+                      className="w-full py-2.5 rounded-pill text-sm font-semibold text-white"
+                      style={{ background: 'var(--accent)' }}>
+                      Start Session
+                    </button>
+                    <button onClick={() => setShowCustom(false)}
+                      className="text-xs text-center py-1" style={{ color: 'var(--fg-2)' }}>← Back</button>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      {PRESETS.map(p => (
+                        <button key={p.label}
+                          onClick={() => { setConfig(p.config); setShowSetup(false) }}
+                          className="py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.97]"
+                          style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--fg)' }}>
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setShowCustom(true)}
+                      className="text-xs text-center py-1" style={{ color: 'var(--fg-2)' }}>
+                      Custom time →
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : config ? (
+            <PomodoroRoom
+              config={config}
+              user={effectiveUser}
+              displayName={displayName}
+              roomSlug={slug}
+              isSolo={isSolo}
+              roomState={roomState}
+              onBroadcast={state => setRoomState(state as RoomState | null)}
+              onDone={() => { setShowSetup(true); setConfig(null) }}
+            />
+          ) : null}
         </div>
 
-        {showSetup ? (
-          <div className="w-full max-w-md bg-white/5 backdrop-blur-md rounded-3xl p-8 border border-white/10 space-y-6">
-            <h2 className="text-2xl font-black text-center">Start a Session</h2>
-
-            {showCustom ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold uppercase opacity-50 block mb-2">
-                    Focus (min)
-                  </label>
-                  <input
-                    type="number"
-                    value={customFocus}
-                    onChange={(e) => setCustomFocus(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-white/10 border-b-2 border-white/30 p-2 outline-none focus:border-white text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase opacity-50 block mb-2">
-                    Break (min)
-                  </label>
-                  <input
-                    type="number"
-                    value={customBreak}
-                    onChange={(e) => setCustomBreak(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-white/10 border-b-2 border-white/30 p-2 outline-none focus:border-white text-white"
-                  />
-                </div>
-                <button
-                  onClick={() =>
-                    handleStartSession({ focusMinutes: customFocus, breakMinutes: customBreak })
-                  }
-                  className="w-full bg-white text-blue-600 font-black rounded-xl py-3 hover:bg-blue-50 transition-colors"
-                >
-                  Start Session
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {PRESETS.map((preset) => (
-                  <button
-                    key={preset.label}
-                    onClick={() => handleStartSession(preset.config)}
-                    className="p-3 rounded-xl bg-white/10 border border-transparent hover:border-white/20 hover:bg-white/20 transition-all text-sm font-bold"
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <button
-              onClick={() => setShowCustom(!showCustom)}
-              className="w-full text-xs font-bold uppercase tracking-wider opacity-60 hover:opacity-100 transition-opacity py-2"
-            >
-              {showCustom ? '← Back' : 'Custom Time →'}
-            </button>
+        {/* Chat panel — group rooms only, after session starts */}
+        {!isSolo && config && (
+          <div className="w-[320px] border-l flex flex-col" style={{ borderColor: 'var(--border)' }}>
+            <Chat
+              user={effectiveUser}
+              displayName={displayName}
+              roomSlug={slug}
+              isSolo={false}
+              focusLocked={false}
+            />
           </div>
-        ) : config ? (
-          <PomodoroRoom
-            config={config}
-            user={effectiveUser}
-            displayName={displayName}
-            roomSlug={slug}
-            isSolo={isSolo}
-            roomState={roomState}
-            onBroadcast={(state) => setRoomState(state as RoomState | null)}
-            onDone={handleDone}
-          />
-        ) : null}
+        )}
       </div>
-
-      {/* Right: Chat */}
-      {user && config && (
-        <div className="w-80 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 flex flex-col overflow-hidden">
-          <Chat
-            user={user}
-            displayName={displayName}
-            roomSlug={slug}
-            isSolo={isSolo}
-            focusLocked={false}
-          />
-        </div>
-      )}
     </div>
   )
 }
