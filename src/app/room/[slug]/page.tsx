@@ -115,7 +115,7 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
                         className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
                         style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--fg)' }} />
                     </div>
-                    <button onClick={() => setConfig({ focusMinutes: customFocus, breakMinutes: customBreak }) || setShowSetup(false)}
+                    <button onClick={() => { setConfig({ focusMinutes: customFocus, breakMinutes: customBreak }); setShowSetup(false) }}
                       className="w-full py-2.5 rounded-pill text-sm font-semibold text-white"
                       style={{ background: 'var(--accent)' }}>
                       Start Session
