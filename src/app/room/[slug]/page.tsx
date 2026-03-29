@@ -29,7 +29,6 @@ const PRESETS: { label: string; config: TimerConfig }[] = [
 
 export default function RoomPage({ params }: { params: { slug: string } }) {
   const router = useRouter()
-  const supabase = createClient()
   const [user, setUser] = useState<User | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [config, setConfig] = useState<TimerConfig | null>(null)
@@ -40,6 +39,7 @@ export default function RoomPage({ params }: { params: { slug: string } }) {
   const [roomState, setRoomState] = useState<RoomState | null>(null)
 
   useEffect(() => {
+    const supabase = createClient()
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)

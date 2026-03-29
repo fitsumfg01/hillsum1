@@ -44,12 +44,16 @@ export default function LobbyPage() {
   const [joinError, setJoinError] = useState('')
   const [creating, setCreating] = useState(false)
   const router = useRouter()
-  const supabaseRef = useRef(createClient())
-  const supabase = supabaseRef.current
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+  const getSupabase = () => {
+    if (!supabaseRef.current) supabaseRef.current = createClient()
+    return supabaseRef.current
+  }
 
   const [intendedRoom, setIntendedRoom] = useState<string | null>(null)
 
   useEffect(() => {
+    const supabase = getSupabase()
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace('/'); return }
       setUser(data.user)
@@ -69,7 +73,7 @@ export default function LobbyPage() {
     e.preventDefault(); setCreateError('')
     if (!VALID_NAME.test(createName)) { setCreateError('3–40 characters: lowercase letters, numbers, hyphens'); return }
     setCreating(true)
-    const { error } = await supabase.from('rooms').insert({ name: createName, created_by: user!.id })
+    const { error } = await getSupabase().from('rooms').insert({ name: createName, created_by: user!.id })
     setCreating(false)
     if (error) { setCreateError(error.code === '23505' ? 'That name is taken — try another' : error.message); return }
     router.push(`/room/${createName}`)
@@ -78,7 +82,7 @@ export default function LobbyPage() {
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault(); setJoinError('')
     const name = joinName.trim().toLowerCase().replace(/.*\/room\//, '')
-    const { data } = await supabase.from('rooms').select('name').eq('name', name).single()
+    const { data } = await getSupabase().from('rooms').select('name').eq('name', name).single()
     if (!data) { setJoinError('Room not found'); return }
     router.push(`/room/${name}`)
   }
