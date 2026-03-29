@@ -137,6 +137,9 @@ export default function PomodoroRoom({
     }
   }, [user, isGuest])
 
+  const saveStatsRef = useRef(saveStats)
+  useEffect(() => { saveStatsRef.current = saveStats }, [saveStats])
+
   // Tick — drives both solo and shared
   useEffect(() => {
     if (!running || showDone) return
@@ -144,17 +147,15 @@ export default function PomodoroRoom({
       const rem = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000))
       setSecondsLeft(rem)
 
-      // Update session accumulators every second
       if (phaseRef.current === 'focus') setSessionFocusSecs(s => s + 1)
       else setSessionBreakSecs(s => s + 1)
 
       if (rem <= 0) {
         clearInterval(intervalRef.current!)
-        // Save actual elapsed seconds for this phase
         const elapsed = Math.round((Date.now() - phaseStartRef.current) / 1000)
 
         if (phaseRef.current === 'focus') {
-          saveStats(elapsed, 0)
+          saveStatsRef.current(elapsed, 0)
           phaseStartRef.current = Date.now()
           if (isSolo) {
             const dur = config.breakMinutes * 60
@@ -171,7 +172,7 @@ export default function PomodoroRoom({
             })
           }
         } else {
-          saveStats(0, elapsed)
+          saveStatsRef.current(0, elapsed)
           setShowDone(true); setRunning(false)
           playSessionEnd(); notify('Session complete', 'Your pomodoro is done.')
           if (!isSolo) onBroadcast?.({ phase: 'idle' })
@@ -209,11 +210,21 @@ export default function PomodoroRoom({
 
   function handleEnd() {
     clearInterval(intervalRef.current!); setRunning(false)
+    const elapsed = Math.round((Date.now() - phaseStartRef.current) / 1000)
+    if (elapsed > 0) {
+      if (phaseRef.current === 'focus') saveStatsRef.current(elapsed, 0)
+      else saveStatsRef.current(0, elapsed)
+    }
     playSessionEnd(); setShowDone(true)
     if (!isSolo) onBroadcast?.({ phase: 'idle' })
   }
 
   function handleRepeat() {
+    const elapsed = Math.round((Date.now() - phaseStartRef.current) / 1000)
+    if (elapsed > 0) {
+      if (phaseRef.current === 'focus') saveStatsRef.current(elapsed, 0)
+      else saveStatsRef.current(0, elapsed)
+    }
     setShowDone(false); setRunning(true)
     setSessionFocusSecs(0); setSessionBreakSecs(0)
     phaseStartRef.current = Date.now()
