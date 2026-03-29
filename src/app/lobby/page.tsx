@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
@@ -44,7 +44,8 @@ export default function LobbyPage() {
   const [joinError, setJoinError] = useState('')
   const [creating, setCreating] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
+  const supabase = supabaseRef.current
 
   const [intendedRoom, setIntendedRoom] = useState<string | null>(null)
 
