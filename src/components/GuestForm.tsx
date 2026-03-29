@@ -10,7 +10,7 @@ export default function GuestForm({ onBack }: { onBack: () => void }) {
     e.preventDefault()
     if (!name.trim()) return
     sessionStorage.setItem('guest_name', name.trim())
-    router.push('/room/solo-guest')
+    router.push('/lobby')
   }
 
   return (

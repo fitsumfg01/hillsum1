@@ -15,6 +15,7 @@ const GoogleIcon = () => (
 export default function LoginForm({ onBack, onSignup }: { onBack: () => void; onSignup: () => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -23,7 +24,15 @@ export default function LoginForm({ onBack, onSignup }: { onBack: () => void; on
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setError(''); setLoading(true)
+    // persistSession controls whether the session survives browser close
+    await supabase.auth.setSession ? null : null // no-op, handled below
     const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (!rememberMe) {
+      // Clear persisted session on tab close by using sessionStorage flag
+      sessionStorage.setItem('no_persist', '1')
+    } else {
+      sessionStorage.removeItem('no_persist')
+    }
     setLoading(false)
     if (error) { setError(error.message); return }
     const intended = sessionStorage.getItem('intended_room')
@@ -64,6 +73,12 @@ export default function LoginForm({ onBack, onSignup }: { onBack: () => void; on
         style={{ background: 'var(--accent)' }}>
         {loading ? 'Signing in…' : 'Sign In'}
       </button>
+
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)}
+          className="w-4 h-4 rounded accent-[var(--accent)]" />
+        <span className="text-sm" style={{ color: 'var(--fg-2)' }}>Remember me</span>
+      </label>
 
       <div className="flex items-center gap-2">
         <hr className="flex-1" style={{ borderColor: 'var(--border)' }} />

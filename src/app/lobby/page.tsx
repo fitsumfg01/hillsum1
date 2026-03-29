@@ -49,6 +49,12 @@ export default function LobbyPage() {
   const [intendedRoom, setIntendedRoom] = useState<string | null>(null)
 
   useEffect(() => {
+    const guestName = sessionStorage.getItem('guest_name')
+    if (guestName) {
+      setDisplayName(guestName)
+      setUser({ id: 'guest' } as unknown as User)
+      return
+    }
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace('/'); return }
       setUser(data.user)
@@ -66,6 +72,7 @@ export default function LobbyPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault(); setCreateError('')
+    if (user?.id === 'guest') { setCreateError('Sign in to create named rooms'); return }
     if (!VALID_NAME.test(createName)) { setCreateError('3–40 characters: lowercase letters, numbers, hyphens'); return }
     setCreating(true)
     const { error } = await supabase.from('rooms').insert({ name: createName, created_by: user!.id })

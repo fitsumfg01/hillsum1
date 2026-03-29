@@ -11,11 +11,19 @@ export default function Home() {
   const [loaded, setLoaded] = useState(false)
   const [checking, setChecking] = useState(true)
   const router = useRouter()
-  const supabase = createClient()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) { router.replace('/lobby'); return }
+    const supabase = createClient()
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session) {
+        // If user chose not to be remembered, sign them out on fresh load
+        if (sessionStorage.getItem('no_persist')) {
+          await supabase.auth.signOut()
+          setChecking(false)
+          return
+        }
+        router.replace('/lobby'); return
+      }
       setChecking(false)
     })
     const t = setTimeout(() => setLoaded(true), 600)
