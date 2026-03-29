@@ -219,6 +219,10 @@ export default function PomodoroRoom({
       onBroadcast?.({
         phase: 'focus',
         endTime: Date.now() + config.focusMinutes * 60 * 1000,
+        secondsLeft: config.focusMinutes * 60,
+        running: true,
+        user_id: user.id,
+        displayName,
         focusMinutes: config.focusMinutes,
         breakMinutes: config.breakMinutes,
       })
