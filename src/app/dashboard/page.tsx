@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
-import { Plus } from 'lucide-react'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -52,7 +51,7 @@ export default function DashboardPage() {
           className="group p-8 rounded-3xl bg-white/5 border border-white/10 hover:border-white/30 hover:bg-white/10 transition-all space-y-4 text-left"
         >
           <div className="w-12 h-12 rounded-2xl bg-blue-500/20 flex items-center justify-center group-hover:bg-blue-500/30 transition-colors">
-            <Plus size={24} className="text-blue-400" />
+            <span className="text-2xl">+</span>
           </div>
           <div>
             <h2 className="text-xl font-black mb-1">Solo Room</h2>
@@ -69,7 +68,7 @@ export default function DashboardPage() {
           className="group p-8 rounded-3xl bg-white/5 border border-white/10 hover:border-white/30 hover:bg-white/10 transition-all space-y-4 text-left"
         >
           <div className="w-12 h-12 rounded-2xl bg-green-500/20 flex items-center justify-center group-hover:bg-green-500/30 transition-colors">
-            <Plus size={24} className="text-green-400" />
+            <span className="text-2xl">+</span>
           </div>
           <div>
             <h2 className="text-xl font-black mb-1">Group Room</h2>
