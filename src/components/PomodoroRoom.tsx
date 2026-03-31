@@ -152,7 +152,8 @@ export default function PomodoroRoom({
 
       if (rem <= 0) {
         clearInterval(intervalRef.current!)
-        const elapsed = Math.round((Date.now() - phaseStartRef.current) / 1000)
+        const rawElapsed = Math.round((Date.now() - phaseStartRef.current) / 1000)
+        const elapsed = Math.min(rawElapsed, config.focusMinutes * 60)
 
         if (phaseRef.current === 'focus') {
           saveStatsRef.current(elapsed, 0)
@@ -172,7 +173,8 @@ export default function PomodoroRoom({
             })
           }
         } else {
-          saveStatsRef.current(0, elapsed)
+          const breakElapsed = Math.min(rawElapsed, config.breakMinutes * 60)
+          saveStatsRef.current(0, breakElapsed)
           setShowDone(true); setRunning(false)
           playSessionEnd(); notify('Session complete', 'Your pomodoro is done.')
           if (!isSolo) onBroadcast?.({ phase: 'idle' })
@@ -210,7 +212,8 @@ export default function PomodoroRoom({
 
   function handleEnd() {
     clearInterval(intervalRef.current!); setRunning(false)
-    const elapsed = Math.round((Date.now() - phaseStartRef.current) / 1000)
+    const phaseCap = phaseRef.current === 'focus' ? config.focusMinutes * 60 : config.breakMinutes * 60
+    const elapsed = Math.min(Math.round((Date.now() - phaseStartRef.current) / 1000), phaseCap)
     if (elapsed > 0) {
       if (phaseRef.current === 'focus') saveStatsRef.current(elapsed, 0)
       else saveStatsRef.current(0, elapsed)
@@ -220,7 +223,8 @@ export default function PomodoroRoom({
   }
 
   function handleRepeat() {
-    const elapsed = Math.round((Date.now() - phaseStartRef.current) / 1000)
+    const phaseCap = phaseRef.current === 'focus' ? config.focusMinutes * 60 : config.breakMinutes * 60
+    const elapsed = Math.min(Math.round((Date.now() - phaseStartRef.current) / 1000), phaseCap)
     if (elapsed > 0) {
       if (phaseRef.current === 'focus') saveStatsRef.current(elapsed, 0)
       else saveStatsRef.current(0, elapsed)
