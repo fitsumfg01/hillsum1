@@ -47,8 +47,9 @@ export default function Chat({
   const [text, setText] = useState('')
   const [joinNotice, setJoinNotice] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const myId = user.id
+  const isGuest = myId === 'guest'
   const roomIdRef = useRef<string | null>(null)
   const isFirstMount = useRef(true)
 
@@ -62,6 +63,10 @@ export default function Chat({
     const ch = supabase.channel(`chat:${roomSlug}`, { config: { broadcast: { self: false } } })
       .on('broadcast', { event: 'message' }, ({ payload }: { payload: Message }) => {
         setMessages(prev => prev.some(m => m.id === payload.id) ? prev : [...prev, payload])
+        // Notify if tab is not focused
+        if (document.visibilityState !== 'visible' && Notification.permission === 'granted') {
+          new Notification(payload.sender_name, { body: payload.content, silent: false })
+        }
       })
       .subscribe(async (status) => {
         if (status !== 'SUBSCRIBED' || historyLoaded) return
@@ -91,6 +96,7 @@ export default function Chat({
     const content = text.trim()
     if (!content || focusLocked) return
     setText('')
+    if (inputRef.current) { inputRef.current.style.height = 'auto' }
 
     if (isSolo) {
       setMessages(prev => [...prev, {
@@ -135,12 +141,16 @@ export default function Chat({
     inputRef.current?.focus()
   }
 
-  const grouped = messages.map((m, i) => ({
-    ...m,
-    isFirst: i === 0 || messages[i - 1].user_id !== m.user_id,
-    isLast:  i === messages.length - 1 || messages[i + 1].user_id !== m.user_id,
-    isMine:  m.user_id === myId,
-  }))
+  const grouped = messages.map((m, i) => {
+    const key = (id: string, name: string) => id === 'guest' ? `guest:${name}` : id
+    return {
+      ...m,
+      isFirst: i === 0 || key(messages[i - 1].user_id, messages[i - 1].sender_name) !== key(m.user_id, m.sender_name),
+      isLast:  i === messages.length - 1 || key(messages[i + 1].user_id, messages[i + 1].sender_name) !== key(m.user_id, m.sender_name),
+      isMine:  m.user_id === myId && !(isGuest && m.sender_name !== displayName),
+      isGuest: m.user_id === 'guest',
+    }
+  })
 
   return (
     <div className="h-full flex flex-col glass rounded-card overflow-hidden" style={{ boxShadow: 'var(--shadow-md)' }}>
@@ -149,7 +159,7 @@ export default function Chat({
       <div className="px-4 pt-4 pb-3 border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center justify-between">
           <span className="text-[13px] font-semibold" style={{ color: 'var(--fg)' }}>
-            {isSolo ? 'Notes' : `#${roomSlug}`}
+            {isSolo ? `${displayName}'s space` : `#${roomSlug}`}
           </span>
           {focusLocked && !isSolo && (
             <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full"
@@ -183,8 +193,14 @@ export default function Chat({
             </div>
             <div className={`flex flex-col gap-0.5 ${m.isMine ? 'items-end' : 'items-start'} max-w-[78%]`}>
               {!m.isMine && m.isFirst && (
-                <span className="text-[10px] font-semibold ml-2" style={{ color: 'var(--fg-2)' }}>
+                <span className="text-[10px] font-semibold ml-2 flex items-center gap-1" style={{ color: 'var(--fg-2)' }}>
                   {m.sender_name}
+                  {m.isGuest && (
+                    <span className="text-[9px] px-1 py-px rounded-full font-medium"
+                      style={{ background: 'var(--bg)', color: 'var(--fg-2)', border: '1px solid var(--border)' }}>
+                      guest
+                    </span>
+                  )}
                 </span>
               )}
               <div className="px-3 py-[7px] text-[13px] leading-[1.45] break-words" style={{
@@ -217,22 +233,31 @@ export default function Chat({
             </p>
           </div>
         )}
-        <form onSubmit={sendMessage} className="flex gap-2 items-center">
-          <input
+        <form onSubmit={sendMessage} className="flex gap-2 items-end">
+          <textarea
             ref={inputRef}
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e) }
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e as any) }
             }}
             placeholder="Message"
             maxLength={500}
+            rows={1}
             disabled={focusLocked && !isSolo}
             autoComplete="off"
-            className="flex-1 text-[13px] px-3 py-2 rounded-xl outline-none transition-all"
-            style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--fg)' }}
+            className="flex-1 text-[13px] px-3 py-2 rounded-xl outline-none transition-all resize-none"
+            style={{
+              background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--fg)',
+              maxHeight: '96px', overflowY: 'auto',
+            }}
             onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
             onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+            onInput={e => {
+              const el = e.currentTarget
+              el.style.height = 'auto'
+              el.style.height = Math.min(el.scrollHeight, 96) + 'px'
+            }}
           />
           <button
             type="submit"
