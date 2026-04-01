@@ -408,15 +408,15 @@ export default function RoomPage() {
       </header>
 
       {/* ── Main ── */}
-      <div className="flex-1 flex flex-col-reverse md:flex-row gap-4 p-4 pt-5 max-w-5xl mx-auto w-full">
+      <div className="flex-1 flex flex-col-reverse md:flex-row gap-4 p-4 pt-5 max-w-5xl mx-auto w-full md:items-center">
 
         {/* Chat — bottom on mobile, right on desktop */}
-        <div className="w-full md:w-[300px] md:flex-shrink-0 h-[40vh] md:h-[calc(100vh-72px)]">
+        <div className="w-full md:w-[300px] md:flex-shrink-0 h-[40vh] md:h-[560px]">
           <Chat user={user} displayName={displayName} roomSlug={slug} isSolo={false} focusLocked={chatLocked} />
         </div>
 
         {/* Timer — top on mobile, left on desktop */}
-        <div className="flex-1 min-w-0 flex items-start justify-center">
+        <div className="flex-1 min-w-0 flex items-center justify-center">
           {timerPhase === 'setup' ? (
             <PomodoroSetup onStart={handleStart} />
           ) : (
